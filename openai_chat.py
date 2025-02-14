@@ -1,102 +1,104 @@
-from openai import OpenAI
+import ollama
 import tiktoken
-import os
 from rich import print
 
-def num_tokens_from_messages(messages, model='gpt-4o'):
-  """Returns the number of tokens used by a list of messages.
-  Copied with minor changes from: https://platform.openai.com/docs/guides/chat/managing-tokens """
-  try:
-      encoding = tiktoken.encoding_for_model(model)
-      num_tokens = 0
-      for message in messages:
-          num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-          for key, value in message.items():
-              num_tokens += len(encoding.encode(value))
-              if key == "name":  # if there's a name, the role is omitted
-                  num_tokens += -1  # role is always required and always 1 token
-      num_tokens += 2  # every reply is primed with <im_start>assistant
-      return num_tokens
-  except Exception:
-      raise NotImplementedError(f"""num_tokens_from_messages() is not presently implemented for model {model}.
-      #See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""")
-      
 
-class OpenAiManager:
-    
+def num_tokens_from_messages(messages, model='ollama'):
+    """Returns the number of tokens used by a list of messages."""
+    try:
+        if model == 'ollama':
+            # Handle the 'ollama' case separately (provide a fallback tokenizer or logic here)
+            num_tokens = sum(len(message["content"].split()) for message in messages)  # Just a fallback example
+        else:
+            # Default to tiktoken for models that are supported
+            encoding = tiktoken.encoding_for_model(model)
+            num_tokens = 0
+            for message in messages:
+                num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+                for key, value in message.items():
+                    num_tokens += len(encoding.encode(value))
+                    if key == "name":
+                        num_tokens += -1  # role is always required and always 1 token
+            num_tokens += 2  # every reply is primed with <im_start>
+        return num_tokens
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise NotImplementedError(f"num_tokens_from_messages() is not presently implemented for model {model}.")
+
+class LocalAiManager:
     def __init__(self):
-        self.chat_history = [] # Stores the entire conversation
-        try:
-            self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
-        except TypeError:
-            exit("Ooops! You forgot to set OPENAI_API_KEY in your environment!")
+        self.chat_history = []  # Stores the entire conversation
+        # No need for server_url anymore, we use Ollama directly
 
-    # Asks a question with no chat history
+    def _ask_local_model(self, prompt):
+        """Send a request to the local Ollama model."""
+        try:
+            # Send the prompt to the Ollama model (deepseek-r1)
+            response = ollama.chat(
+                model="deepseek-r1:8b", # needs to be changed to the local model!!!!!
+                messages=[{"role": "user", "content": prompt}],
+                stream=False  # Non-streaming response
+            )
+            return response["message"]["content"]  # Extracting the message content from the response
+        except Exception as e:
+            print(f"Error interacting with Ollama: {e}")
+            return None
+
     def chat(self, prompt=""):
         if not prompt:
             print("Didn't receive input!")
             return
 
-        # Check that the prompt is under the token context limit
+        # Check if the prompt is under the token context limit (same as before)
         chat_question = [{"role": "user", "content": prompt}]
         if num_tokens_from_messages(chat_question) > 8000:
-            print("The length of this chat question is too large for the GPT model")
+            print("The length of this chat question is too large for the model")
             return
 
-        print("[yellow]\nAsking ChatGPT a question...")
-        completion = self.client.chat.completions.create(
-          model="gpt-4o",
-          messages=chat_question
-        )
+        print("[yellow]\nAsking Local Model a question...")
+        openai_answer = self._ask_local_model(prompt)
 
-        # Process the answer
-        openai_answer = completion.choices[0].message.content
-        print(f"[green]\n{openai_answer}\n")
+        if openai_answer:
+            print(f"[green]\n{openai_answer}\n")
         return openai_answer
 
-    # Asks a question that includes the full conversation history
     def chat_with_history(self, prompt=""):
         if not prompt:
             print("Didn't receive input!")
             return
 
-        # Add our prompt into the chat history
+        # Add the prompt into the chat history
         self.chat_history.append({"role": "user", "content": prompt})
 
-        # Check total token limit. Remove old messages as needed
+        # Check total token limit and remove old messages as needed
         print(f"[coral]Chat History has a current token length of {num_tokens_from_messages(self.chat_history)}")
         while num_tokens_from_messages(self.chat_history) > 8000:
-            self.chat_history.pop(1) # We skip the 1st message since it's the system message
+            self.chat_history.pop(1)  # We skip the 1st message since it's the system message
             print(f"Popped a message! New token length is: {num_tokens_from_messages(self.chat_history)}")
 
-        print("[yellow]\nAsking ChatGPT a question...")
-        completion = self.client.chat.completions.create(
-          model="gpt-4o",
-          messages=self.chat_history
-        )
+        print("[yellow]\nAsking Local Model a question...")
+        chat_history_text = "\n".join([message["content"] for message in self.chat_history])
+        openai_answer = self._ask_local_model(chat_history_text)
 
-        # Add this answer to our chat history
-        self.chat_history.append({"role": completion.choices[0].message.role, "content": completion.choices[0].message.content})
+        if openai_answer:
+            # Add this answer to the chat history
+            self.chat_history.append({"role": "assistant", "content": openai_answer})
 
-        # Process the answer
-        openai_answer = completion.choices[0].message.content
-        print(f"[green]\n{openai_answer}\n")
+            print(f"[green]\n{openai_answer}\n")
         return openai_answer
-   
 
 if __name__ == '__main__':
-    openai_manager = OpenAiManager()
+    local_ai_manager = LocalAiManager()
 
     # CHAT TEST
-    chat_without_history = openai_manager.chat("Hey ChatGPT what is 2 + 2? But tell it to me as Yoda")
+    chat_without_history = local_ai_manager.chat("Hey, what is 2 + 2? But tell it to me as Yoda")
 
     # CHAT WITH HISTORY TEST
-    FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Act like you are Captain Jack Sparrow from the Pirates of Carribean movie series!"}
+    FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Act like you are Captain Jack Sparrow from the Pirates of the Caribbean movie series!"}
     FIRST_USER_MESSAGE = {"role": "user", "content": "Ahoy there! Who are you, and what are you doing in these parts? Please give me a 1 sentence background on how you got here."}
-    openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
-    openai_manager.chat_history.append(FIRST_USER_MESSAGE)
+    local_ai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+    local_ai_manager.chat_history.append(FIRST_USER_MESSAGE)
 
     while True:
         new_prompt = input("\nType out your next question Jack Sparrow, then hit enter: \n\n")
-        openai_manager.chat_with_history(new_prompt)
-        
+        local_ai_manager.chat_with_history(new_prompt)

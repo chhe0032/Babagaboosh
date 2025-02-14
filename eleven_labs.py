@@ -1,22 +1,24 @@
-from elevenlabs import generate, stream, set_api_key, voices, play, save
+from elevenlabs.client import ElevenLabs
+from elevenlabs import stream, voices, play, save
 import time
 import os
 
 try:
-  set_api_key(os.getenv('ELEVENLABS_API_KEY'))
+  client = ElevenLabs(
+     api_key="sk_a622f1814a1eb56c8c14ea038b1d3c90a90f3da76de48c58",
+  )
 except TypeError:
   exit("Ooops! You forgot to set ELEVENLABS_API_KEY in your environment!")
 
 class ElevenLabsManager:
+    
+    response = client.voices.get_all()
+    print(response.voices)
 
-    def __init__(self):
-        # CALLING voices() IS NECESSARY TO INSTANTIATE 11LABS FOR SOME FUCKING REASON
-        all_voices = voices()
-        print(f"\nAll ElevenLabs voices: \n{all_voices}\n")
 
     # Convert text to speech, then save it to file. Returns the file path
-    def text_to_audio(self, input_text, voice="Doug VO Only", save_as_wave=True, subdirectory=""):
-        audio_saved = generate(
+    def text_to_audio(self, input_text, voice="Madeira", save_as_wave=True, subdirectory=""):
+        audio_saved = client.generate(
           text=input_text,
           voice=voice,
           model="eleven_monolingual_v1"
@@ -30,8 +32,8 @@ class ElevenLabsManager:
         return tts_file
 
     # Convert text to speech, then play it out loud
-    def text_to_audio_played(self, input_text, voice="Doug VO Only"):
-        audio = generate(
+    def text_to_audio_played(self, input_text, voice="Madeira"):
+        audio = client.generate(
           text=input_text,
           voice=voice,
           model="eleven_monolingual_v1"
@@ -39,8 +41,8 @@ class ElevenLabsManager:
         play(audio)
 
     # Convert text to speech, then stream it out loud (don't need to wait for full speech to finish)
-    def text_to_audio_streamed(self, input_text, voice="Doug VO Only"):
-        audio_stream = generate(
+    def text_to_audio_streamed(self, input_text, voice="Madeira"):
+        audio_stream = client.generate(
           text=input_text,
           voice=voice,
           model="eleven_monolingual_v1",
@@ -52,11 +54,13 @@ class ElevenLabsManager:
 if __name__ == '__main__':
     elevenlabs_manager = ElevenLabsManager()
 
-    elevenlabs_manager.text_to_audio_streamed("This is my streamed test audio, I'm so much cooler than played", "Doug Melina")
+    elevenlabs_manager.text_to_audio_streamed("This is my streamed test audio, I'm so much cooler than played", "Madeira")
     time.sleep(2)
-    elevenlabs_manager.text_to_audio_played("This is my played test audio, helo hello", "Doug Melina")
+    elevenlabs_manager.text_to_audio_played("This is my played test audio, helo hello", "Madeira")
     time.sleep(2)
-    file_path = elevenlabs_manager.text_to_audio("This is my saved test audio, please make me beautiful", "Doug Melina")
+    file_path = elevenlabs_manager.text_to_audio("This is my saved test audio, please make me beautiful", "Madeira")
     print("Finished with all tests")
 
     time.sleep(30)
+
+#export ELEVENLABS_API_KEY="sk_a622f1814a1eb56c8c14ea038b1d3c90a90f3da76de48c58"

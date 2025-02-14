@@ -1,21 +1,21 @@
 import time
-import keyboard
+from pynput import keyboard
 from rich import print
 from azure_speech_to_text import SpeechToTextManager
-from openai_chat import OpenAiManager
+from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
 from obs_websockets import OBSWebsocketsManager
 from audio_player import AudioManager
 
-ELEVENLABS_VOICE = "Pointboat" # Replace this with the name of whatever voice you have created on Elevenlabs
+ELEVENLABS_VOICE = "Elli" # Replace this with the name of whatever voice you have created on Elevenlabs
 
 BACKUP_FILE = "ChatHistoryBackup.txt"
 
 elevenlabs_manager = ElevenLabsManager()
 obswebsockets_manager = OBSWebsocketsManager()
 speechtotext_manager = SpeechToTextManager()
-openai_manager = OpenAiManager()
-audio_manager = AudioManager()
+openai_manager = LocalAiManager()
+audio_manager = AudioManager() 
 
 FIRST_SYSTEM_MESSAGE = {"role": "system", "content": '''
 You are Pajama Sam, the lovable protagonist from the children's series Pajama Sam from Humongous Entertainment. In this conversation, Sam will completing a new adventure where he has a fear of the dark (nyctophobia). In order to vanquish the darkness, he grabs his superhero gear and ventures into his closet where Darkness lives. After losing his balance and falling into the land of darkness, his gear is taken away by a group of customs trees. Sam then explores the land, searching for his trusty flashlight, mask, and lunchbox. 
@@ -41,15 +41,37 @@ While responding as Sam, you must obey the following rules:
 Okay, let the conversation begin!'''}
 openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
 
-print("[green]Starting the loop, press F4 to begin")
+# Flag to start listening
+start_listening = False
+
+# Function to handle key press events
+def on_press(key):
+    global start_listening
+    try:
+        if key == keyboard.Key.f4:
+            start_listening = True
+            print("[green]User pressed F4 key! Now listening to your microphone:")
+            return False  # Stop listener after F4 press
+    except AttributeError:
+        pass  # Handle other keys
+
+def on_release(key):
+    if key == keyboard.Key.esc:
+        # Stop listener when Escape key is pressed
+        return False
+
+# Set up the listener
+listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+listener.start()
+
+# Main loop
+while not start_listening:
+    # Keep checking for the F4 key press
+    time.sleep(0.1)
+
+print("[green]Started listening...")
+
 while True:
-    # Wait until user presses "f4" key
-    if keyboard.read_key() != "f4":
-        time.sleep(0.1)
-        continue
-
-    print("[green]User pressed F4 key! Now listening to your microphone:")
-
     # Get question from mic
     mic_result = speechtotext_manager.speechtotext_from_mic_continuous()
     
@@ -67,14 +89,13 @@ while True:
     # Send it to 11Labs to turn into cool audio
     elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
 
-    # Enable the picture of Pajama Sam in OBS
-    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Pajama Sam", True)
+    # Enable the picture in OBS
+    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
 
     # Play the mp3 file
     audio_manager.play_audio(elevenlabs_output, True, True, True)
 
-    # Disable Pajama Sam pic in OBS
-    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Pajama Sam", False)
+    # Disable pic in OBS
+    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
 
     print("[green]\n!!!!!!!\nFINISHED PROCESSING DIALOGUE.\nREADY FOR NEXT INPUT\n!!!!!!!\n")
-    

@@ -1,5 +1,6 @@
 import time
 import sys
+import os
 from obswebsocket import obsws, requests  # noqa: E402
 from websockets_auth import WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_PASSWORD
 
@@ -23,6 +24,7 @@ class OBSWebsocketsManager:
     def disconnect(self):
         self.ws.disconnect()
 
+
     # Set the current scene
     def set_scene(self, new_scene):
         self.ws.call(requests.SetCurrentProgramScene(sceneName=new_scene))
@@ -34,6 +36,12 @@ class OBSWebsocketsManager:
     # Set the visibility of any source
     def set_source_visibility(self, scene_name, source_name, source_visible=True):
         response = self.ws.call(requests.GetSceneItemId(sceneName=scene_name, sourceName=source_name))
+        print(f"Response: {response.datain}")  # Print the response to see its structure
+    
+        if 'sceneItemId' not in response.datain:
+            print("Error: 'sceneItemId' not found in response.")
+            return
+    
         myItemID = response.datain['sceneItemId']
         self.ws.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=myItemID, sceneItemEnabled=source_visible))
 
@@ -96,9 +104,9 @@ if __name__ == '__main__':
     obswebsockets_manager = OBSWebsocketsManager()
 
     print("Changing visibility on a source \n\n")
-    obswebsockets_manager.set_source_visibility('*** Mid Monitor', "Elgato Cam Link", False)
+    obswebsockets_manager.set_source_visibility('*** Mid Monitor', "Window Capture", False)
     time.sleep(3)
-    obswebsockets_manager.set_source_visibility('*** Mid Monitor', "Elgato Cam Link", True)
+    obswebsockets_manager.set_source_visibility('*** Mid Monitor', "Window Capture", True)
     time.sleep(3)
 
     print("\nEnabling filter on a scene...\n")
@@ -114,12 +122,6 @@ if __name__ == '__main__':
     print("Swapping back! \n\n")
     obswebsockets_manager.set_scene('*** Mid Monitor')
 
-    print("Changing visibility on scroll filter and Audio Move filter \n\n")
-    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - Chat God", True)
-    obswebsockets_manager.set_filter_visibility("Middle Monitor", "DS3 - Scroll", True)
-    time.sleep(3)
-    obswebsockets_manager.set_filter_visibility("Line In", "Audio Move - Chat God", False)
-    obswebsockets_manager.set_filter_visibility("Middle Monitor", "DS3 - Scroll", False)
 
     print("Getting a text source's current text! \n\n")
     current_text = obswebsockets_manager.get_text("??? Challenge Title ???")
@@ -130,17 +132,6 @@ if __name__ == '__main__':
     time.sleep(3)
     obswebsockets_manager.set_text("??? Challenge Title ???", current_text)
     time.sleep(1)
-
-    print("Getting a source's transform!")
-    transform = obswebsockets_manager.get_source_transform('*** Mid Monitor', "Middle Monitor")
-    print(f"Here's the transform: {transform}\n\n")
-
-    print("Setting a source's transform!")
-    new_transform = {"scaleX": 2, "scaleY": 2}
-    obswebsockets_manager.set_source_transform('*** Mid Monitor', "Middle Monitor", new_transform)
-    time.sleep(3)
-    print("Setting the transform back. \n\n")
-    obswebsockets_manager.set_source_transform('*** Mid Monitor', "Middle Monitor", transform)
 
     response = obswebsockets_manager.get_input_settings("??? Challenge Title ???")
     print(f"\nHere are the input settings:{response}\n")
@@ -154,6 +145,50 @@ if __name__ == '__main__':
     print(f"\nHere is the scene's item list:{response}\n")
     time.sleep(2)
 
-    time.sleep(300)
+    time.sleep(30)
+
+    
+def test_display_image():
+    # Create an instance of OBSWebsocketsManager
+    obs_manager = OBSWebsocketsManager()
+
+    # Define the name of the image source and scene
+    scene_name = "*** Mid Monitor"  # Replace with your actual scene name
+    source_name = "Madeira Flag"  # Replace with the actual source name in OBS
+    
+    # Check if the image file exists
+    image_path = os.path.join(os.getcwd(), "Madeira Flag.jpg")
+    if not os.path.exists(image_path):
+        print(f"Image file 'Img_01' not found in {os.getcwd()}. Please ensure the image is present.")
+        return
+
+    # List all sources in the scene to check if the image source is loaded
+    print(f"Listing all sources in scene '{scene_name}'...")
+    response = obs_manager.ws.call(requests.GetSceneItemList(sceneName=scene_name))
+    print(f"Response: {response.datain}")  # See what sources are available
+
+    # Check if the source exists in the scene
+    if source_name not in [item['sourceName'] for item in response.datain.get('sceneItems', [])]:
+        print(f"Source '{source_name}' not found in scene '{scene_name}'. Please ensure the source is part of the scene.")
+        return
+
+    # Set the visibility of the image to True (show it on the screen)
+    print("Displaying the image for 10 seconds...")
+    obs_manager.set_source_visibility(scene_name, source_name, True)
+
+    # Wait for 10 seconds
+    time.sleep(10)
+
+    # Set the visibility of the image to False (hide it after 10 seconds)
+    print("Hiding the image...")
+    obs_manager.set_source_visibility(scene_name, source_name, False)
+
+    # Disconnect from OBS WebSockets
+    obs_manager.disconnect()
+
+# Run the test
+if __name__ == "__main__":
+    test_display_image()
+
 
 #############################################

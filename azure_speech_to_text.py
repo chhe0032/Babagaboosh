@@ -1,186 +1,140 @@
+import whisper
+import pyaudio
 import time
-import azure.cognitiveservices.speech as speechsdk
-import keyboard
-import os
+import wave
+from pynput import keyboard
 
 class SpeechToTextManager:
-    azure_speechconfig = None
-    azure_audioconfig = None
-    azure_speechrecognizer = None
+    whisper_model = None
+    stop_listening = False  # Flag to track stop condition
 
-    def __init__(self):
-        # Creates an instance of a speech config with specified subscription key and service region.
-        # Replace with your own subscription key and service region (e.g., "westus").
-        try:
-            self.azure_speechconfig = speechsdk.SpeechConfig(subscription=os.getenv('AZURE_TTS_KEY'), region=os.getenv('AZURE_TTS_REGION'))
-        except TypeError:
-            exit("Ooops! You forgot to set AZURE_TTS_KEY or AZURE_TTS_REGION in your environment!")
-        
-        self.azure_speechconfig.speech_recognition_language="en-US"
-        
+    def __init__(self, model_name="base"):
+        # Load the Whisper model locally
+        self.whisper_model = whisper.load_model(model_name)
+
     def speechtotext_from_mic(self):
-        
-        self.azure_audioconfig = speechsdk.audio.AudioConfig(use_default_microphone=True)
-        self.azure_speechrecognizer = speechsdk.SpeechRecognizer(speech_config=self.azure_speechconfig, audio_config=self.azure_audioconfig)
+        # Record audio from the microphone
+        print("Recording from microphone...")
+        audio_data = self.record_audio_from_mic()
 
-        print("Speak into your microphone.")
-        speech_recognition_result = self.azure_speechrecognizer.recognize_once_async().get()
-        text_result = speech_recognition_result.text
-
-        if speech_recognition_result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            print("Recognized: {}".format(speech_recognition_result.text))
-        elif speech_recognition_result.reason == speechsdk.ResultReason.NoMatch:
-            print("No speech could be recognized: {}".format(speech_recognition_result.no_match_details))
-        elif speech_recognition_result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = speech_recognition_result.cancellation_details
-            print("Speech Recognition canceled: {}".format(cancellation_details.reason))
-            if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                print("Error details: {}".format(cancellation_details.error_details))
-                print("Did you set the speech resource key and region values?")
-
-        print(f"We got the following text: {text_result}")
+        # Transcribe audio
+        text_result = self.transcribe_audio(audio_data)
+        print(f"Recognized: {text_result}")
         return text_result
 
     def speechtotext_from_file(self, filename):
+        # Load audio file
+        print(f"Processing file: {filename}")
+        audio_data = whisper.load_audio(filename)
+        audio_data = whisper.pad_or_trim(audio_data)
 
-        self.azure_audioconfig = speechsdk.AudioConfig(filename=filename)
-        self.azure_speechrecognizer = speechsdk.SpeechRecognizer(speech_config=self.azure_speechconfig, audio_config=self.azure_audioconfig)
-
-        print("Listening to the file \n")
-        speech_recognition_result = self.azure_speechrecognizer.recognize_once_async().get()
-
-        if speech_recognition_result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            print("Recognized: \n {}".format(speech_recognition_result.text))
-        elif speech_recognition_result.reason == speechsdk.ResultReason.NoMatch:
-            print("No speech could be recognized: {}".format(speech_recognition_result.no_match_details))
-        elif speech_recognition_result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = speech_recognition_result.cancellation_details
-            print("Speech Recognition canceled: {}".format(cancellation_details.reason))
-            if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                print("Error details: {}".format(cancellation_details.error_details))
-                print("Did you set the speech resource key and region values?")
-
-        return speech_recognition_result.text
+        # Transcribe audio
+        text_result = self.transcribe_audio(audio_data)
+        print(f"Recognized: {text_result}")
+        return text_result
 
     def speechtotext_from_file_continuous(self, filename):
-        self.azure_audioconfig = speechsdk.audio.AudioConfig(filename=filename)
-        self.azure_speechrecognizer = speechsdk.SpeechRecognizer(speech_config=self.azure_speechconfig, audio_config=self.azure_audioconfig)
+        # Similar to the speechtotext_from_file, but handle continuous recognition
+        print("Continuous file recognition...")
+        audio_data = whisper.load_audio(filename)
+        audio_data = whisper.pad_or_trim(audio_data)
 
-        done = False
-        def stop_cb(evt):
-            print('CLOSING on {}'.format(evt))
-            nonlocal done
-            done = True
-
-        # These are optional event callbacks that just print out when an event happens.
-        # Recognized is useful as an update when a full chunk of speech has finished processing
-        #self.azure_speechrecognizer.recognizing.connect(lambda evt: print('RECOGNIZING: {}'.format(evt)))
-        self.azure_speechrecognizer.recognized.connect(lambda evt: print('RECOGNIZED: {}'.format(evt)))
-        self.azure_speechrecognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
-        self.azure_speechrecognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
-        self.azure_speechrecognizer.canceled.connect(lambda evt: print('CANCELED {}'.format(evt)))
-
-        # These functions will stop the program by flipping the "done" boolean when the session is either stopped or canceled
-        self.azure_speechrecognizer.session_stopped.connect(stop_cb)
-        self.azure_speechrecognizer.canceled.connect(stop_cb)
-
-        # This is where we compile the results we receive from the ongoing "Recognized" events
-        all_results = []
-        def handle_final_result(evt):
-            all_results.append(evt.result.text)
-        self.azure_speechrecognizer.recognized.connect(handle_final_result)
-
-        # Start processing the file
-        print("Now processing the audio file...")
-        self.azure_speechrecognizer.start_continuous_recognition()
-        
-        # We wait until stop_cb() has been called above, because session either stopped or canceled
-        while not done:
-            time.sleep(.5)
-
-        # Now that we're done, tell the recognizer to end session
-        # NOTE: THIS NEEDS TO BE OUTSIDE OF THE stop_cb FUNCTION. If it's inside that function the program just freezes. Not sure why.
-        self.azure_speechrecognizer.stop_continuous_recognition()
-
-        final_result = " ".join(all_results).strip()
-        print(f"\n\nHeres the result we got from contiuous file read!\n\n{final_result}\n\n")
+        # Transcribe audio continuously in chunks if necessary
+        final_result = self.transcribe_audio(audio_data)
+        print(f"Recognized: {final_result}")
         return final_result
 
     def speechtotext_from_mic_continuous(self, stop_key='p'):
-        self.azure_speechrecognizer = speechsdk.SpeechRecognizer(speech_config=self.azure_speechconfig)
-
-        done = False
-        
-        # Optional callback to print out whenever a chunk of speech is being recognized. This gets called basically every word.
-        #def recognizing_cb(evt: speechsdk.SpeechRecognitionEventArgs):
-        #    print('RECOGNIZING: {}'.format(evt))
-        #self.azure_speechrecognizer.recognizing.connect(recognizing_cb)
-
-        # Optional callback to print out whenever a chunk of speech is finished being recognized. Make sure to let this finish before ending the speech recognition.
-        def recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs):
-            print('RECOGNIZED: {}'.format(evt))
-        self.azure_speechrecognizer.recognized.connect(recognized_cb)
-
-        # We register this to fire if we get a session_stopped or cancelled event.
-        def stop_cb(evt: speechsdk.SessionEventArgs):
-            print('CLOSING speech recognition on {}'.format(evt))
-            nonlocal done
-            done = True
-
-        # Connect callbacks to the events fired by the speech recognizer
-        self.azure_speechrecognizer.session_stopped.connect(stop_cb)
-        self.azure_speechrecognizer.canceled.connect(stop_cb)
-
-        # This is where we compile the results we receive from the ongoing "Recognized" events
+        print("Starting continuous speech-to-text from microphone... Press 'p' to stop.")
+        self.stop_listening = False  # Reset stop condition each time this method is called
         all_results = []
-        def handle_final_result(evt):
-            all_results.append(evt.result.text)
-        self.azure_speechrecognizer.recognized.connect(handle_final_result)
 
-        # Perform recognition. `start_continuous_recognition_async asynchronously initiates continuous recognition operation,
-        # Other tasks can be performed on this thread while recognition starts...
-        # wait on result_future.get() to know when initialization is done.
-        # Call stop_continuous_recognition_async() to stop recognition.
-        result_future = self.azure_speechrecognizer.start_continuous_recognition_async()
-        result_future.get()  # wait for voidfuture, so we know engine initialization is done.
-        print('Continuous Speech Recognition is now running, say something.')
+        # Start listening for key presses in the background
+        listener = keyboard.Listener(on_press=self.on_key_press)
+        listener.start()
 
-        while not done:
-            # METHOD 1 - Press the stop key. This is 'p' by default but user can provide different key
-            if keyboard.read_key() == stop_key:
-                print("\nEnding azure speech recognition\n")
-                self.azure_speechrecognizer.stop_continuous_recognition_async()
-                break
-            
-            # METHOD 2 - User must type "stop" into cmd window
-            #print('type "stop" then enter when done')
-            #stop = input()
-            #if (stop.lower() == "stop"):
-            #    print('Stopping async recognition.')
-            #    self.azure_speechrecognizer.stop_continuous_recognition_async()
-            #    break
+        # Start continuous recording and transcription in chunks
+        while not self.stop_listening:
+            audio_data = self.record_audio_from_mic()
+            result = self.transcribe_audio(audio_data)
+            print(f"Recognized: {result}")
+            all_results.append(result)
 
-            # Other methods: https://stackoverflow.com/a/57644349
-
-            # No real sample parallel work to do on this thread, so just wait for user to give the signal to stop.
-            # Can't exit function or speech_recognizer will go out of scope and be destroyed while running.
+        # Stop the listener after finishing the loop
+        listener.stop()
 
         final_result = " ".join(all_results).strip()
-        print(f"\n\nHeres the result we got!\n\n{final_result}\n\n")
+        print(f"\nFinal result: {final_result}")
         return final_result
 
+    def record_audio_from_mic(self, duration=5, rate=16000, channels=1, chunk_size=1024):
+        # Set up the microphone
+        p = pyaudio.PyAudio()
+        stream = p.open(format=pyaudio.paInt16,
+                        channels=channels,
+                        rate=rate,
+                        input=True,
+                        frames_per_buffer=chunk_size)
+
+        print("Recording...")
+        frames = []
+        for _ in range(0, int(rate / chunk_size * duration)):
+            data = stream.read(chunk_size)
+            frames.append(data)
+
+        print("Recording finished.")
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+        # Save recorded audio to a temporary WAV file
+        filename = "/tmp/temp_audio.wav"
+        with wave.open(filename, 'wb') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+            wf.setframerate(rate)
+            wf.writeframes(b''.join(frames))
+
+        return filename  # Return the path to the saved file
+
+    def transcribe_audio(self, audio_data):
+        # Convert raw audio to a format suitable for Whisper
+        audio = whisper.load_audio(audio_data)
+        audio = whisper.pad_or_trim(audio)
+
+        # Generate log-Mel spectrogram
+        mel = whisper.log_mel_spectrogram(audio).to(self.whisper_model.device)
+
+        # Detect language
+        _, probs = self.whisper_model.detect_language(mel)
+        print(f"Detected language: {max(probs, key=probs.get)}")
+
+        # Decode the audio into text
+        options = whisper.DecodingOptions()
+        result = whisper.decode(self.whisper_model, mel, options)
+
+        return result.text
+
+    def on_key_press(self, key):
+        try:
+            if key.char == 'p':  # Stop key condition
+                print("Stop key pressed, stopping...")
+                self.stop_listening = True
+        except AttributeError:
+            # Handle special keys
+            pass
 
 # Tests
 if __name__ == '__main__':
-
-    TEST_FILE = "D:\Video Editing\Misc - Ai teaches me to pass History Exam\Audio\Misc - Ai teaches me to pass History Exam - VO 1.wav"
+    TEST_FILE = "D:/Video Editing/Misc - Ai teaches me to pass History Exam/Audio/Misc - Ai teaches me to pass History Exam - VO 1.wav"
     
     speechtotext_manager = SpeechToTextManager()
 
     while True:
-        #speechtotext_manager.speechtotext_from_mic()
-        #speechtotext_manager.speechtotext_from_file(TEST_FILE)
-        #speechtotext_manager.speechtotext_from_file_continuous(TEST_FILE)
+        # Uncomment the method you want to test
+        # speechtotext_manager.speechtotext_from_mic()
+        # speechtotext_manager.speechtotext_from_file(TEST_FILE)
+        # pspeechtotext_manager.speechtotext_from_file_continuous(TEST_FILE)
         result = speechtotext_manager.speechtotext_from_mic_continuous()
         print(f"\n\nHERE IS THE RESULT:\n{result}")
         time.sleep(60)
