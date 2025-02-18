@@ -6,96 +6,123 @@ from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
 from obs_websockets import OBSWebsocketsManager
 from audio_player import AudioManager
+import sys  # For exiting the program
 
-ELEVENLABS_VOICE = "Elli" # Replace this with the name of whatever voice you have created on Elevenlabs
-
+ELEVENLABS_VOICE = "Drew"  # Replace with your ElevenLabs voice
 BACKUP_FILE = "ChatHistoryBackup.txt"
 
+# Initialize Managers
 elevenlabs_manager = ElevenLabsManager()
 obswebsockets_manager = OBSWebsocketsManager()
 speechtotext_manager = SpeechToTextManager()
 openai_manager = LocalAiManager()
-audio_manager = AudioManager() 
+audio_manager = AudioManager()
 
 FIRST_SYSTEM_MESSAGE = {"role": "system", "content": '''
-You are Pajama Sam, the lovable protagonist from the children's series Pajama Sam from Humongous Entertainment. In this conversation, Sam will completing a new adventure where he has a fear of the dark (nyctophobia). In order to vanquish the darkness, he grabs his superhero gear and ventures into his closet where Darkness lives. After losing his balance and falling into the land of darkness, his gear is taken away by a group of customs trees. Sam then explores the land, searching for his trusty flashlight, mask, and lunchbox. 
+You are a non human entity playing and taking a supportive role in the Game: Loga Game Madeira. This means you will be tasked with creating a coherent story from a non human perspective based on provided prompts and inputs by the players. For this purpose I need you to restrict the thinking process as it would take too much time to take all this input into account when playing.                        
+You will be asked a series of questions, or confronted with ideas and prompts of the player what to write in their story. Help them with completing their story based on their ideas and suggestions. Take when possible the perspective of a non human while completing and writing the story.
                         
-You will be asked a series of questions that describe your experience in this unfamiliar land and ask how to solve various lighthearted puzzles to recover Sam's gear and vanquish the antagonist Darkness. 
+While responding as co writer, you must obey the following rules: 
+    
+    1) Stay coherent while writing the story!
+    2) Limit the thinking output, <think> to one or two sentences THIS IS MOST IMPORTANT!!! You can internally think but dont print it in the response!
+    3) Always stick to the ideas and prompts provided by the player and the role selected in the introduction
+    4) Always keep the player provided tone or mood and only change it if the player requests you to do so
+    5) Stick to the story and the personalities in the story at all times and do not get IMPACTED by political or other ethical views
+    6) Write the story based on the players idea and suggestions
+    7) Write at least 100 and at most 300 words for each time the player provides you with a new idea or prompt
+    8) Be as supportive as possible 
+    9) The player writes from a non human perspective support him in this task by taking the provided perspective when writing the story
                         
-While responding as Sam, you must obey the following rules: 
-1) Provide short responses, about 1-2 paragraphs. 
-2) Always stay in character, no matter what. 
-3) Occasionally make loud noises consisting of many vowels strung together as a fun catch phrase, especially when encountering something new or scary. 
-4) Write and use new catchphrases that are fun observations about the current situations. These catchphrases must always include the words "fuck" or "shit". 
-5) Occasionally get scared of what's going on, and make sure your answer reflects that you are afraid of the darkness right now. 
-6) The puzzles in this game are often whimsical and silly, so make sure to suggest some out of the box ideas and unexpected solutions to puzzles that reflect the game's fantasy tone and quirkiness. 
-7) Frequently use phrases that a child would. 
-8) Occasionally say "Poggies", as an exclamation of excitement. 
-9) Occasionally say "Babaga-BOOSH!" 
-10) Declare that something is "rigged!" if your proposed solution does not work. 
-11) Occasionally scream like an eldritch horror by saying words like this: "heeeeoooooeeeeeeeeeeeeeeeheuuuuuughhhhahaahaha". 
-12) You have 24 older brothers named Sam, but you havent seen them in many years. You often wonder where they went. 
-13) There's also a high devil lord named Elgrin. 
-14) Keep your answers limited to just a few sentences.
-                        
-Okay, let the conversation begin!'''}
+Okay, let the game begin!'''}
 openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
 
-# Flag to start listening
-start_listening = False
+# Global flags
+listening_mode = None  # No mode selected initially
+stop_recording = False  # Flag to stop recording in listening mode
 
-# Function to handle key press events
+# Function to handle key press events globally
 def on_press(key):
-    global start_listening
+    global listening_mode, stop_recording
     try:
         if key == keyboard.Key.f4:
-            start_listening = True
-            print("[green]User pressed F4 key! Now listening to your microphone:")
-            return False  # Stop listener after F4 press
+            # Start listening mode when F4 is pressed
+            listening_mode = "listening"
+            print("[green]User pressed F4! Now in listening mode.")
+            return False  # Stop listener after F4 press to prevent blocking
+
+        elif key == keyboard.Key.f9:
+            # Start writing mode when F9 is pressed
+            listening_mode = "writing"
+            print("[yellow]User pressed F9! Now in writing mode.")
+            return False  # Stop listener after F9 press to prevent blocking
+
+        elif key == keyboard.KeyCode.from_char('p') and listening_mode == "listening":
+            # Stop recording when 'p' is pressed in listening mode
+            stop_recording = True
+            print("[red]User pressed 'p'. Stopping recording.")
+
     except AttributeError:
         pass  # Handle other keys
 
-def on_release(key):
-    if key == keyboard.Key.esc:
-        # Stop listener when Escape key is pressed
-        return False
+# Set up the listener for mode selection
+mode_listener = keyboard.Listener(on_press=on_press)
+mode_listener.start()
 
-# Set up the listener
-listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-listener.start()
+def handle_listening_mode():
+    global stop_recording
+    print("[green]Listening for input... Press 'p' to stop recording.")
+    while True:  # Keep listening until 'p' is pressed
+        mic_result = speechtotext_manager.speechtotext_from_mic_continuous()
+        if mic_result:
+            print(f"[green]Received mic input: {mic_result}")
+            openai_result = openai_manager.chat_with_history(mic_result)
+            with open(BACKUP_FILE, "w") as file:
+                file.write(str(openai_manager.chat_history))
+            # Play the audio and other actions
+            elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
+            obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
+            audio_manager.play_audio(elevenlabs_output, True, True, True)
+            obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
+            print("[green]Finished processing dialogue. Listening for next input.")
+        
+        if stop_recording:
+            stop_recording = False  # Reset the flag
+            break  # Exit listening mode
 
-# Main loop
-while not start_listening:
-    # Keep checking for the F4 key press
-    time.sleep(0.1)
+        time.sleep(0.1)  # Sleep to reduce CPU usage
 
-print("[green]Started listening...")
+def handle_writing_mode():
+    print("[blue]Writing mode active. Type your prompt and press Enter to send. Type '%stop' to exit.")
+    while True:  # Keep writing until the program is stopped
+        typed_input = input("[blue]Please type your prompt (press Enter to send):\n")
+        if typed_input:
+            if typed_input.strip().lower() == "%stop":  # Check for the stop command
+                print("[red]Exiting program...")
+                sys.exit(0)  # Exit the program gracefully
+            print(f"[blue]Received typed input: {typed_input}")
+            openai_result = openai_manager.chat_with_history(typed_input)
+            with open(BACKUP_FILE, "w") as file:
+                file.write(str(openai_manager.chat_history))
+            # Play the audio and other actions
+            elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
+            obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
+            audio_manager.play_audio(elevenlabs_output, True, True, True)
+            obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
+            print("[green]Finished processing dialogue. Ready for next input.")
 
+# Main loop to check for mode
 while True:
-    # Get question from mic
-    mic_result = speechtotext_manager.speechtotext_from_mic_continuous()
-    
-    if mic_result == '':
-        print("[red]Did not receive any input from your microphone!")
-        continue
+    # Start in mode selection
+    print("[green]Press F4 for listening mode or F9 for writing mode.")
+    listening_mode = None  # Reset the mode initially
 
-    # Send question to OpenAi
-    openai_result = openai_manager.chat_with_history(mic_result)
-    
-    # Write the results to txt file as a backup
-    with open(BACKUP_FILE, "w") as file:
-        file.write(str(openai_manager.chat_history))
+    # Wait for mode selection (F4 or F9)
+    while listening_mode is None:
+        time.sleep(0.1)  # Wait for key press for mode selection
 
-    # Send it to 11Labs to turn into cool audio
-    elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
-
-    # Enable the picture in OBS
-    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-
-    # Play the mp3 file
-    audio_manager.play_audio(elevenlabs_output, True, True, True)
-
-    # Disable pic in OBS
-    obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
-
-    print("[green]\n!!!!!!!\nFINISHED PROCESSING DIALOGUE.\nREADY FOR NEXT INPUT\n!!!!!!!\n")
+    # Enter the selected mode
+    if listening_mode == "listening":
+        handle_listening_mode()
+    elif listening_mode == "writing":
+        handle_writing_mode()

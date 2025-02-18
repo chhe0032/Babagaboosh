@@ -93,17 +93,26 @@ class AudioManager:
 if __name__ == '__main__':
     audio_manager = AudioManager()
     MP3_FILEPATH = "___Msg-2336946178996207021.mp3"
-    WAV_FILEPATH = "TestAudio_WAV.wav"
+    WAV_FILEPATH = "___Msg6957082765001821183.wav"
 
     if not os.path.exists(MP3_FILEPATH) or not os.path.exists(WAV_FILEPATH):
         exit("Missing test audio")
     
-    # MP3 Test
-    audio_manager.play_audio(MP3_FILEPATH)
+
+
+    # Wav file tests
+    audio_manager.play_audio(WAV_FILEPATH)
     print("Sleeping until next file")
     time.sleep(3)
 
 '''
+
+# MP3 Test
+    audio_manager.play_audio(MP3_FILEPATH)
+    print("Sleeping until next file")
+    time.sleep(3)
+
+    
     # Lots of MP3s at once test
     x = 10
     while x > 0:
@@ -113,10 +122,6 @@ if __name__ == '__main__':
     print("Sleeping until next file")
     time.sleep(3)
 
-    # Wav file tests
-    audio_manager.play_audio(WAV_FILEPATH)
-    print("Sleeping until next file")
-    time.sleep(3)
 
     # Lots of WAVs at once test
     x = 10
