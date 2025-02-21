@@ -6,10 +6,56 @@ from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
 from obs_websockets import OBSWebsocketsManager
 from audio_player import AudioManager
-import sys  # For exiting the program
+import sys
+import os
+import PyPDF2
 
 ELEVENLABS_VOICE = "Drew"  # Replace with your ElevenLabs voice
 BACKUP_FILE = "ChatHistoryBackup.txt"
+
+# Function to read txt or PDF
+def read_system_message(txt_file_path, pdf_file_path):
+    # Try reading from the text file first
+    if os.path.exists(txt_file_path):
+        print(f"Reading from text file: {txt_file_path}")
+        return read_system_message_from_txt(txt_file_path)
+    # If the text file is not found, try reading from the PDF file
+    elif os.path.exists(pdf_file_path):
+        print(f"Text file not found. Reading from PDF file: {pdf_file_path}")
+        return read_system_message_from_pdf(pdf_file_path)
+    # If neither file is found, return None
+    else:
+        print(f"Error: Neither '{txt_file_path}' nor '{pdf_file_path}' found.")
+        return None
+
+def read_system_message_from_txt(file_path):
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            content = file.read()
+            print(f"Content read from text file: {content}")  # Debug print
+        return {"role": "system", "content": content}
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        return None
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
+def read_system_message_from_pdf(file_path):
+    try:
+        with open(file_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            content = ""
+            for page in reader.pages:
+                content += page.extract_text()
+            print(f"Content read from PDF file: {content}")  # Debug print
+        return {"role": "system", "content": content}
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        return None
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return None
 
 # Initialize Managers
 elevenlabs_manager = ElevenLabsManager()
@@ -18,24 +64,17 @@ speechtotext_manager = SpeechToTextManager()
 openai_manager = LocalAiManager()
 audio_manager = AudioManager()
 
-FIRST_SYSTEM_MESSAGE = {"role": "system", "content": '''
-You are a non human entity playing and taking a supportive role in the Game: Loga Game Madeira. This means you will be tasked with creating a coherent story from a non human perspective based on provided prompts and inputs by the players. For this purpose I need you to restrict the thinking process as it would take too much time to take all this input into account when playing.                        
-You will be asked a series of questions, or confronted with ideas and prompts of the player what to write in their story. Help them with completing their story based on their ideas and suggestions. Take when possible the perspective of a non human while completing and writing the story.
-                        
-While responding as co writer, you must obey the following rules: 
-    
-    1) Stay coherent while writing the story!
-    2) Limit the thinking output, <think> to one or two sentences THIS IS MOST IMPORTANT!!! You can internally think but dont print it in the response!
-    3) Always stick to the ideas and prompts provided by the player and the role selected in the introduction
-    4) Always keep the player provided tone or mood and only change it if the player requests you to do so
-    5) Stick to the story and the personalities in the story at all times and do not get IMPACTED by political or other ethical views
-    6) Write the story based on the players idea and suggestions
-    7) Write at least 100 and at most 300 words for each time the player provides you with a new idea or prompt
-    8) Be as supportive as possible 
-    9) The player writes from a non human perspective support him in this task by taking the provided perspective when writing the story
-                        
-Okay, let the game begin!'''}
-openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+# Read the system message from a file (try .txt first, then .pdf)
+FIRST_SYSTEM_MESSAGE = read_system_message("system_message.txt", "system_message.pdf")
+if FIRST_SYSTEM_MESSAGE:
+    openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+else:
+    print("Error: Could not load system message. Using default.")  # Debug print
+    FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Default system message."}
+    openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+
+# Debug print to check the chat history
+print("Current chat history:", openai_manager.chat_history)
 
 # Global flags
 listening_mode = None  # No mode selected initially
@@ -57,11 +96,6 @@ def on_press(key):
             print("[yellow]User pressed F9! Now in writing mode.")
             return False  # Stop listener after F9 press to prevent blocking
 
-        elif key == keyboard.KeyCode.from_char('p') and listening_mode == "listening":
-            # Stop recording when 'p' is pressed in listening mode
-            stop_recording = True
-            print("[red]User pressed 'p'. Stopping recording.")
-
     except AttributeError:
         pass  # Handle other keys
 
@@ -82,10 +116,10 @@ def handle_listening_mode():
             # Play the audio and other actions
             elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-            audio_manager.play_audio(elevenlabs_output, True, True, True)
+            audio_manager.play_audio(elevenlabs_output, True, False, True)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Listening for next input.")
-        
+
         if stop_recording:
             stop_recording = False  # Reset the flag
             break  # Exit listening mode

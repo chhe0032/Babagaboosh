@@ -123,6 +123,7 @@ class SpeechToTextManager:
         except AttributeError:
             # Handle special keys
             pass
+    
 
 # Tests
 if __name__ == '__main__':
