@@ -1,7 +1,8 @@
 import time
 from pynput import keyboard
 from rich import print
-from azure_speech_to_text import SpeechToTextManager
+from flask import Flask, request, jsonify, send_file
+from whisper_speech_to_text import SpeechToTextManager
 from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
 from obs_websockets import OBSWebsocketsManager
@@ -9,6 +10,78 @@ from audio_player import AudioManager
 import sys
 import os
 import PyPDF2
+import threading
+import tempfile
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Initialize Managers
+elevenlabs_manager = ElevenLabsManager()
+obswebsockets_manager = OBSWebsocketsManager()
+speechtotext_manager = SpeechToTextManager()
+openai_manager = LocalAiManager()
+audio_manager = AudioManager()
+
+# --- Flask Routes ---
+@app.route('/chat_history', methods=['GET'])
+def get_chat_history():
+    if openai_manager:
+        return jsonify(openai_manager.chat_history)
+    else:
+        return jsonify({"error": "OpenAI manager not initialized"}), 500
+
+@app.route('/process_input', methods=['POST'])
+def process_input():
+    # Get the user prompt from the request
+    data = request.get_json()
+    user_prompt = data.get('prompt', '').strip()
+
+    # If there's no prompt, return an error
+    if not user_prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+
+    try:
+        # Get the AI response from the LLM
+        openai_result = openai_manager.chat_with_history(user_prompt)
+        ai_response = openai_result  # The text response from the LLM
+
+        # Now convert the LLM response to speech using ElevenLabs
+        elevenlabs_output = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
+
+        obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
+
+        if isinstance(elevenlabs_output, str):
+            # If it's a string, it might be a base64 string or encoded text, so decode it to bytes
+            elevenlabs_output = bytes(elevenlabs_output, 'utf-8')
+         
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio_file:
+            tmp_audio_file.write(elevenlabs_output)
+            tmp_audio_path = tmp_audio_file.name  # Get the path of the temporary file
+
+        # Send the audio file back to the browser for playback
+        return send_file(tmp_audio_path, mimetype="audio/mpeg")
+
+        # Play the generated audio using AudioManager
+        #audio_manager.play_audio(elevenlabs_output, True, True, True)
+
+        obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
+
+        # Return the AI response to the client
+        #return jsonify({"response": ai_response, "audio_played": True})
+
+    except Exception as e:
+        # Handle errors in the processing pipeline
+        return jsonify({"error": str(e)}), 500
+
+
+# Function to run the Flask app in a separate thread
+def run_flask_app():
+    app.run(host="0.0.0.0", port=5000)
+
+# --- Main Code ---
+def main():
+    global elevenlabs_manager, obswebsockets_manager, speechtotext_manager, openai_manager, audio_manager
 
 ELEVENLABS_VOICE = "Drew"  # Replace with your ElevenLabs voice
 BACKUP_FILE = "ChatHistoryBackup.txt"
@@ -57,12 +130,6 @@ def read_system_message_from_pdf(file_path):
         print(f"Error reading PDF: {e}")
         return None
 
-# Initialize Managers
-elevenlabs_manager = ElevenLabsManager()
-obswebsockets_manager = OBSWebsocketsManager()
-speechtotext_manager = SpeechToTextManager()
-openai_manager = LocalAiManager()
-audio_manager = AudioManager()
 
 # Read the system message from a file (try .txt first, then .pdf)
 FIRST_SYSTEM_MESSAGE = read_system_message("system_message.txt", "system_message.pdf")
@@ -72,9 +139,6 @@ else:
     print("Error: Could not load system message. Using default.")  # Debug print
     FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Default system message."}
     openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
-
-# Debug print to check the chat history
-print("Current chat history:", openai_manager.chat_history)
 
 # Global flags
 listening_mode = None  # No mode selected initially
@@ -121,7 +185,7 @@ def handle_listening_mode():
             print("[green]Finished processing dialogue. Listening for next input.")
 
         if stop_recording:
-            stop_recording = False  # Reset the flag
+            stop_recording = True  # Reset the flag
             break  # Exit listening mode
 
         time.sleep(0.1)  # Sleep to reduce CPU usage
@@ -145,6 +209,14 @@ def handle_writing_mode():
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Ready for next input.")
 
+# Start the Flask app in a separate thread
+flask_thread = threading.Thread(target=run_flask_app)
+flask_thread.daemon = True  # Allow the program to exit even if Flask is running
+flask_thread.start()
+
+if __name__ == "__main__":
+    main()
+
 # Main loop to check for mode
 while True:
     # Start in mode selection
@@ -160,3 +232,5 @@ while True:
         handle_listening_mode()
     elif listening_mode == "writing":
         handle_writing_mode()
+
+

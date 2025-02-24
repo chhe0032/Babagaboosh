@@ -14,5 +14,6 @@ pyaudio==0.2.14
 pynput==1.7.7
 openai-whisper==20240930
 torch==2.6.0
+flask==3.1.0
 '''
 Need to install openAI whisper from GitHub
