@@ -5,7 +5,7 @@ import os
 
 try:
   client = ElevenLabs(
-     api_key="sk_b384f6c9d2118b9f2e8576f451119532ac8c85b6f3a6ca74",
+     api_key="",
   )
 except TypeError:
   exit("Ooops! You forgot to set ELEVENLABS_API_KEY in your environment!")
@@ -59,6 +59,3 @@ if __name__ == '__main__':
 
     time.sleep(30)
 
-#ELEVENLABS_API_KEY=  sk_a622f1814a1eb56c8c14ea038b1d3c90a90f3da76de48c58
-# iti research API_key:   sk_161da2ae82fbb140d787043ebff9bd49064bc13072b02e74
-# temp API_Key= sk_b384f6c9d2118b9f2e8576f451119532ac8c85b6f3a6ca74
