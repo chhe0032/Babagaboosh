@@ -1,0 +1,25 @@
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    }
+#chat-history {
+    border: 1px solid #ccc;
+    padding: 10px;
+    height: 300px;
+    overflow-y: scroll;
+    margin-bottom: 10px;
+}
+#user-input {
+    width: 80%;
+    padding: 10px;
+    font-size: 16px;
+}
+#send-button {
+    padding: 10px 20px;
+    font-size: 16px;
+}
+#record-button {
+    padding: 10px 20px;
+    font-size: 16px;
+}

@@ -1,7 +1,8 @@
 import time
 from pynput import keyboard
+from pydub import AudioSegment
 from rich import print
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_from_directory, render_template, send_file
 from whisper_speech_to_text import SpeechToTextManager
 from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
@@ -11,7 +12,8 @@ import sys
 import os
 import PyPDF2
 import threading
-import tempfile
+import glob
+import uuid
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -23,7 +25,83 @@ speechtotext_manager = SpeechToTextManager()
 openai_manager = LocalAiManager()
 audio_manager = AudioManager()
 
+chat_messages = []
+
 # --- Flask Routes ---
+
+@app.route('/')
+def index():
+    return render_template("index.html")
+
+@app.route('/get_system_messages', methods=['GET'])
+def get_system_messages():
+    """Retrieve all available system message files from the specified folder."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        system_messages_dir = os.path.join(base_dir, "system_messages") 
+        
+        # Check if the directory exists
+        if not os.path.isdir(system_messages_dir):
+            print(f"System messages directory not found: {system_messages_dir}")
+            return jsonify({"system_messages": [], "error": "System messages directory not found"}), 200
+        
+        # Get all .txt and .pdf files in the directory
+        txt_files = [f for f in os.listdir(system_messages_dir) if f.endswith('.txt')]
+        pdf_files = [f for f in os.listdir(system_messages_dir) if f.endswith('.pdf')]
+        
+        # Process txt files
+        available_files = []
+        for filename in txt_files:
+            available_files.append(filename)
+        
+        # Process pdf files
+        for pdf_filename in pdf_files:
+            txt_filename = pdf_filename.replace(".pdf", ".txt")
+            if txt_filename not in available_files:
+                available_files.append(txt_filename)  
+        
+ 
+        available_files.sort()
+        
+        
+        return jsonify({"system_messages": available_files}), 200
+    except Exception as e:
+        print(f"Error fetching system message files: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/update_system_message', methods=['POST'])
+def update_system_message():
+    data = request.get_json()
+    selected_file = data.get('file')
+
+    if not selected_file:
+        return jsonify({"error": "No file selected"}), 400
+
+    # Get the path to the system messages folder
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    system_messages_dir = os.path.join(base_dir, "system_messages")  # Change to your folder name
+    
+    # Create the full path to the selected file
+    txt_file_path = os.path.join(system_messages_dir, selected_file)
+    pdf_file_path = os.path.join(system_messages_dir, selected_file.replace(".txt", ".pdf"))
+
+    # Read the selected system message file
+    system_message = read_system_message(txt_file_path, pdf_file_path)
+
+    if not system_message:
+        return jsonify({"error": f"Failed to read system message file: {selected_file}"}), 400
+
+    # Update the chat history with the new system message
+    openai_manager.chat_history = [system_message]  # Replace the entire chat history
+    
+    print(f"System message updated successfully with: {selected_file}")
+
+    return jsonify({"message": "System message updated successfully"}), 200
+
+@app.route('/audio/<filename>')
+def serve_audio(filename):
+    return send_from_directory("/tmp", filename, mimetype="audio/mpeg") 
+
 @app.route('/chat_history', methods=['GET'])
 def get_chat_history():
     if openai_manager:
@@ -36,6 +114,7 @@ def process_input():
     # Get the user prompt from the request
     data = request.get_json()
     user_prompt = data.get('prompt', '').strip()
+    use_browser_audio = data.get('use_browser_audio', 'false').lower() == 'true'
 
     # If there's no prompt, return an error
     if not user_prompt:
@@ -44,34 +123,155 @@ def process_input():
     try:
         # Get the AI response from the LLM
         openai_result = openai_manager.chat_with_history(user_prompt)
-        ai_response = openai_result  # The text response from the LLM
+        ai_response = openai_result
 
-        # Now convert the LLM response to speech using ElevenLabs
-        elevenlabs_output = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
-
+        # Get the audio file path from ElevenLabsManager
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
+        
+        # Use the file path directly (do not convert to bytes)
+        audio_filename = f"response_{uuid.uuid4()}.mp3"
+        audio_path = os.path.join("/tmp", audio_filename)
+        
+        # Copy the generated file to /tmp so that it can be served to the browser
+        with open(audio_file_path_from_tts, "rb") as src, open(audio_path, "wb") as dst:
+            dst.write(src.read())
+        
+        with open(BACKUP_FILE, "w") as file:
+            file.write(str(openai_manager.chat_history))
+            
+        # Update OBS visibility before playback
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
 
-        if isinstance(elevenlabs_output, str):
-            # If it's a string, it might be a base64 string or encoded text, so decode it to bytes
-            elevenlabs_output = bytes(elevenlabs_output, 'utf-8')
-         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio_file:
-            tmp_audio_file.write(elevenlabs_output)
-            tmp_audio_path = tmp_audio_file.name  # Get the path of the temporary file
-
-        # Send the audio file back to the browser for playback
-        return send_file(tmp_audio_path, mimetype="audio/mpeg")
-
-        # Play the generated audio using AudioManager
-        #audio_manager.play_audio(elevenlabs_output, True, True, True)
-
+        if not use_browser_audio:
+            # Local playback using AudioManager
+            audio_manager.play_audio(audio_path, True, False, True)
+        
+        # Reset OBS visibility after playback
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
-
-        # Return the AI response to the client
-        #return jsonify({"response": ai_response, "audio_played": True})
+        
+        # Prepare the response data with the audio URL for browser playback
+        response_data = {
+            "response": ai_response,
+            "audio_url": f"/audio/{audio_filename}"
+        }
+        return jsonify(response_data), 200
 
     except Exception as e:
-        # Handle errors in the processing pipeline
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/process_audio', methods=['POST'])
+def process_audio():
+    try:
+        # Check if an audio file was uploaded
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+        
+        use_browser_audio = request.form.get('use_browser_audio', 'false').lower() == 'true'
+        
+        audio_file = request.files.get('audio')
+        if not audio_file:
+            return jsonify({"error": "No valid audio file provided"}), 400
+        
+        received_audio_path = "/tmp/received_audio.webm"
+        audio_file.save(received_audio_path)
+        print(f"Received audio file: {audio_file.filename}")
+
+        try:
+            # Convert WebM to WAV (ensure ffmpeg is installed)
+            wav_path = "/tmp/converted_audio.wav"
+            audio = AudioSegment.from_file(received_audio_path, format="webm")
+            audio.export(wav_path, format="wav")
+        except Exception as e:
+            print(f"Error converting audio: {e}")
+            return jsonify({"error": f"Failed to convert audio: {e}"}), 400
+
+        # Now process the audio file (transcription)
+        transcription = speechtotext_manager.speechtotext_from_file(wav_path)
+        
+        if not transcription:
+            print("Transcription failed.")
+            return jsonify({"error": "Failed to transcribe audio"}), 400
+
+        print(f"Transcription: {transcription}")
+
+        # Generate a unique filename for the response audio
+        audio_filename = f"response_{uuid.uuid4()}.mp3"
+        response_audio_path = os.path.join("/tmp", audio_filename)
+
+        # Process the transcribed text
+        openai_result = openai_manager.chat_with_history(transcription)
+        ai_response = openai_result  # The text response from the LLM
+
+        # Convert the LLM response to speech
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
+
+        if not audio_file_path_from_tts:
+            return jsonify({"error": "Failed to generate speech audio"}), 500
+
+        # Copy the generated file to /tmp so that it can be served to the browser
+        with open(audio_file_path_from_tts, "rb") as src, open(response_audio_path, "wb") as dst:
+            dst.write(src.read())
+
+        with open(BACKUP_FILE, "w") as backup_file:
+            backup_file.write(str(openai_manager.chat_history))
+
+        # Update OBS visibility
+        obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
+
+        if not use_browser_audio:
+            # Local playback
+            audio_manager.play_audio(response_audio_path, True, False, True)
+        
+        # Reset OBS visibility
+        obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
+
+        # Return the response including the audio URL
+        response_data = {
+            "transcribed_text": transcription,
+            "response": ai_response,
+            "audio_url": f"/audio/{audio_filename}"
+        }
+
+        # Clean up temporary input files
+        os.remove(received_audio_path)
+        os.remove(wav_path)
+
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        print(f"Error in processing audio: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+#################TWITCH#########################
+
+app.route('/receive_message', methods=['POST'])
+def receive_message():
+    data = request.json
+    if 'message' in data:
+        chat_messages.append(data['message'])
+        return jsonify({"status": "success", "received": data['message']})
+    return jsonify({"status": "error", "message": "No message received"}), 400
+
+@app.route('/messages', methods=['GET'])
+def get_messages():
+    return jsonify(chat_messages)
+
+###############################################
+
+#TEST PLAYING AUDIO
+@app.route('/play_audio', methods=['GET'])
+def play_audio():
+    try:
+        audio_file_path = "/home/iti/LLM_Agent/Agent01/Babagaboosh/TestAudio_Speech.wav"
+
+        # Ensure request is correct
+        if request.method != 'GET':
+            return jsonify({"error": "Invalid request method"}), 405
+        
+        return send_file(audio_file_path, mimetype="audio/wav")
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -131,22 +331,20 @@ def read_system_message_from_pdf(file_path):
         return None
 
 
-# Read the system message from a file (try .txt first, then .pdf)
+# Initialize the chat history with the default system message
 FIRST_SYSTEM_MESSAGE = read_system_message("system_message.txt", "system_message.pdf")
 if FIRST_SYSTEM_MESSAGE:
-    openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+    openai_manager.chat_history = [FIRST_SYSTEM_MESSAGE]
 else:
-    print("Error: Could not load system message. Using default.")  # Debug print
+    print("Error: Could not load system message. Using default.")
     FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Default system message."}
-    openai_manager.chat_history.append(FIRST_SYSTEM_MESSAGE)
+    openai_manager.chat_history = [FIRST_SYSTEM_MESSAGE]
 
 # Global flags
-listening_mode = None  # No mode selected initially
-stop_recording = False  # Flag to stop recording in listening mode
+listening_mode = None
 
-# Function to handle key press events globally
 def on_press(key):
-    global listening_mode, stop_recording
+    global listening_mode
     try:
         if key == keyboard.Key.f4:
             # Start listening mode when F4 is pressed
@@ -190,6 +388,7 @@ def handle_listening_mode():
 
         time.sleep(0.1)  # Sleep to reduce CPU usage
 
+
 def handle_writing_mode():
     print("[blue]Writing mode active. Type your prompt and press Enter to send. Type '%stop' to exit.")
     while True:  # Keep writing until the program is stopped
@@ -205,7 +404,7 @@ def handle_writing_mode():
             # Play the audio and other actions
             elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-            audio_manager.play_audio(elevenlabs_output, True, True, True)
+            audio_manager.play_audio(elevenlabs_output, True, False, True)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Ready for next input.")
 
@@ -214,8 +413,20 @@ flask_thread = threading.Thread(target=run_flask_app)
 flask_thread.daemon = True  # Allow the program to exit even if Flask is running
 flask_thread.start()
 
+
+# Function to clean up old audio files
+def cleanup_old_audio_files(directory="/tmp", max_age_seconds=3600):
+    """Delete audio files older than `max_age_seconds`."""
+    current_time = time.time()
+    for filepath in glob.glob(os.path.join(directory, "*.mp3")):
+        file_age = current_time - os.path.getmtime(filepath)
+        if file_age > max_age_seconds:
+            os.remove(filepath)
+            print(f"Deleted old audio file: {filepath}")
+
 if __name__ == "__main__":
     main()
+    cleanup_old_audio_files()
 
 # Main loop to check for mode
 while True:

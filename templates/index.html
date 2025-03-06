@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Chat Interface</title>
+    <link rel="stylesheet" href='../static/styles.css'>
+</head>
+<body>
+    <div id="system-message-container">
+        <label for="system-message-select">Select Character Prompt:</label>
+        <select id="system-message-select">
+            <option value="">Loading system messages...</option>
+        </select>
+        <button id="update-system-message-button">Update System Message</button>
+    </div>
+    
+    <h1>LLM Chat Interface</h1>
+    <div id="chat-history"></div>
+    <input type="text" id="user-input" placeholder="Type your prompt here...">
+    <button id="send-button">Send</button>
+    <button id="record-button">Start Recording</button>
+    <script src='../static/script.js'></script>
+</body>
+</html>

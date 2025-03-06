@@ -5,7 +5,7 @@ import os
 
 try:
   client = ElevenLabs(
-     api_key="",
+     api_key="sk_9cb1bf7f0df740d21bceff6459f5323708e8ed4f2d00db08",
   )
 except TypeError:
   exit("Ooops! You forgot to set ELEVENLABS_API_KEY in your environment!")
@@ -21,7 +21,7 @@ class ElevenLabsManager:
         audio_saved = client.generate(
           text=input_text,
           voice=voice,
-          model="eleven_multilingual_v2"
+          model="eleven_turbo_v2"
         )
         if save_as_wave:
           file_name = f"___Msg{str(hash(input_text))}.wav"

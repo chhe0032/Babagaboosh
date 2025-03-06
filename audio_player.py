@@ -5,6 +5,7 @@ import asyncio
 import soundfile as sf
 from mutagen.mp3 import MP3
 
+
 class AudioManager:
 
     def __init__(self):
@@ -88,7 +89,7 @@ class AudioManager:
         # We must use asyncio.sleep() here because the normal time.sleep() will block the thread, even if it's in an async function
         await asyncio.sleep(file_length)
 
-
+'''
 # TESTS
 if __name__ == '__main__':
     audio_manager = AudioManager()
@@ -106,7 +107,7 @@ if __name__ == '__main__':
     time.sleep(3)
 
 '''
-
+'''
 # MP3 Test
     audio_manager.play_audio(MP3_FILEPATH)
     print("Sleeping until next file")
