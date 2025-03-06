@@ -5,7 +5,7 @@ import os
 
 try:
   client = ElevenLabs(
-     api_key="sk_9cb1bf7f0df740d21bceff6459f5323708e8ed4f2d00db08",
+     api_key="",
   )
 except TypeError:
   exit("Ooops! You forgot to set ELEVENLABS_API_KEY in your environment!")
