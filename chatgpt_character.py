@@ -179,7 +179,7 @@ def process_audio():
         try:
             # Convert WebM to WAV (ensure ffmpeg is installed)
             wav_path = "/tmp/converted_audio.wav"
-            audio = AudioSegment.from_file(received_audio_path, format="webm")
+            audio = AudioSegment.from_file(received_audio_path)
             audio.export(wav_path, format="wav")
         except Exception as e:
             print(f"Error converting audio: {e}")

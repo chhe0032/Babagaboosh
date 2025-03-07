@@ -2,6 +2,8 @@ import whisper
 import pyaudio
 import time
 import wave
+import uuid
+import os
 from pynput import keyboard
 
 class SpeechToTextManager:
@@ -15,12 +17,21 @@ class SpeechToTextManager:
     def speechtotext_from_mic(self):
         # Record audio from the microphone
         print("Recording from microphone...")
-        audio_data = self.record_audio_from_mic()
+        audio_file_path = self.record_audio_from_mic()
+
+        # Load audio file
+        audio_data = whisper.load_audio(audio_file_path)
+        audio_data = whisper.pad_or_trim(audio_data)
 
         # Transcribe audio
         text_result = self.transcribe_audio(audio_data)
         print(f"Recognized: {text_result}")
+    
+        # Clean up the temporary file
+        os.remove(audio_file_path)
+
         return text_result
+
 
     def speechtotext_from_file(self, filename):
         # Load audio file
@@ -68,39 +79,43 @@ class SpeechToTextManager:
         return final_result
 
     def record_audio_from_mic(self, duration=5, rate=16000, channels=1, chunk_size=1024):
-        # Set up the microphone
-        p = pyaudio.PyAudio()
-        stream = p.open(format=pyaudio.paInt16,
+        try:
+            # Set up the microphone
+            p = pyaudio.PyAudio()
+            stream = p.open(format=pyaudio.paInt16,
                         channels=channels,
                         rate=rate,
                         input=True,
                         frames_per_buffer=chunk_size)
 
-        print("Recording...")
-        frames = []
-        for _ in range(0, int(rate / chunk_size * duration)):
-            data = stream.read(chunk_size)
-            frames.append(data)
+            print("Recording...")
+            frames = []
+            for _ in range(0, int(rate / chunk_size * duration)):
+                data = stream.read(chunk_size)
+                frames.append(data)
 
-        print("Recording finished.")
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
+            print("Recording finished.")
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
 
-        # Save recorded audio to a temporary WAV file
-        filename = "/tmp/temp_audio.wav"
-        with wave.open(filename, 'wb') as wf:
-            wf.setnchannels(channels)
-            wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
-            wf.setframerate(rate)
-            wf.writeframes(b''.join(frames))
+            # Save recorded audio to a unique temporary WAV file
+            filename = f"/tmp/temp_audio_{uuid.uuid4()}.wav"
+            with wave.open(filename, 'wb') as wf:
+                wf.setnchannels(channels)
+                wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+                wf.setframerate(rate)
+                wf.writeframes(b''.join(frames))
 
-        return filename  # Return the path to the saved file
+            return filename  # Return the path to the saved file
+
+        except Exception as e:
+            print(f"Error recording audio: {e}")
+            return None
 
     def transcribe_audio(self, audio_data):
-        # Convert raw audio to a format suitable for Whisper
-        audio = whisper.load_audio(audio_data)
-        audio = whisper.pad_or_trim(audio)
+        # Ensure audio_data is in the correct format (already a NumPy array)
+        audio = whisper.pad_or_trim(audio_data)
 
         # Generate log-Mel spectrogram
         mel = whisper.log_mel_spectrogram(audio).to(self.whisper_model.device)
