@@ -66,10 +66,22 @@ class SpeechToTextManager:
 
         # Start continuous recording and transcription in chunks
         while not self.stop_listening:
-            audio_data = self.record_audio_from_mic()
+            # Record audio and get the file path
+            audio_file_path = self.record_audio_from_mic()
+            if not audio_file_path:
+                print("Error: Failed to record audio.")
+                continue
+
+            # Load the audio file into a NumPy array
+            audio_data = whisper.load_audio(audio_file_path)
+
+            # Transcribe the audio
             result = self.transcribe_audio(audio_data)
             print(f"Recognized: {result}")
             all_results.append(result)
+
+            # Clean up the temporary audio file
+            os.remove(audio_file_path)
 
         # Stop the listener after finishing the loop
         listener.stop()
