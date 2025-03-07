@@ -143,8 +143,9 @@ def process_input():
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
 
         if not use_browser_audio:
+            print("Playing audio locally...")
             # Local playback using AudioManager
-            audio_manager.play_audio(audio_path, True, False, True)
+            audio_manager.play_audio(audio_path, True, True, True)
         
         # Reset OBS visibility after playback
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
@@ -219,8 +220,9 @@ def process_audio():
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
 
         if not use_browser_audio:
+            print("Playing audio locally...")
             # Local playback
-            audio_manager.play_audio(response_audio_path, True, False, True)
+            audio_manager.play_audio(response_audio_path, True, True, True)
         
         # Reset OBS visibility
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
@@ -342,6 +344,7 @@ else:
 
 # Global flags
 listening_mode = None
+stop_recording = False
 
 def on_press(key):
     global listening_mode
@@ -378,7 +381,7 @@ def handle_listening_mode():
             # Play the audio and other actions
             elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-            audio_manager.play_audio(elevenlabs_output, True, False, True)
+            audio_manager.play_audio(elevenlabs_output, True, True, True)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Listening for next input.")
 
@@ -404,7 +407,7 @@ def handle_writing_mode():
             # Play the audio and other actions
             elevenlabs_output = elevenlabs_manager.text_to_audio(openai_result, ELEVENLABS_VOICE, False)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-            audio_manager.play_audio(elevenlabs_output, True, False, True)
+            audio_manager.play_audio(elevenlabs_output, True, True, True)
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Ready for next input.")
 
