@@ -8,12 +8,17 @@ from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
 from obs_websockets import OBSWebsocketsManager
 from audio_player import AudioManager
+from emoji import demojize
 import sys
 import os
 import PyPDF2
 import threading
 import glob
 import uuid
+import socket
+import logging
+import datetime
+import requests
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -26,6 +31,197 @@ openai_manager = LocalAiManager()
 audio_manager = AudioManager()
 
 chat_messages = []
+nickname = 'InFernal_ger'
+token = 'oauth:bpnxrqwrmffqmhg640hfbcsm0qa285'
+channel = '#ClaudePlaysPokemon'
+
+collected_twitch_messages = []
+trigger_character = "I"  # Character that triggers message collection
+
+#################TWITCH#########################
+
+def connect_to_twitch(token, nickname, channel):
+    try:
+        print(f"Attempting to connect to Twitch IRC as {nickname}...")
+        sock = socket.socket()
+        sock.connect(('irc.chat.twitch.tv', 6667))
+        sock.send(f"PASS {token}\n".encode('utf-8'))
+        sock.send(f"NICK {nickname}\n".encode('utf-8'))
+        sock.send(f"JOIN {channel}\n".encode('utf-8'))
+        print(f"Successfully connected to channel {channel}")
+        return sock
+    except Exception as e:
+        print(f"Failed to connect to Twitch: {e}")
+        raise
+
+def process_twitch_message(message):
+    print(f"Raw message received: {message}")  # Debug raw message
+    
+    # Skip if not a PRIVMSG (user message)
+    if 'PRIVMSG' not in message:
+        print("Not a PRIVMSG, skipping")
+        return None, None
+        
+    try:
+        # Extract username
+        username = message.split('!', 1)[0][1:]
+        # Extract message content
+        message_content = message.split('PRIVMSG', 1)[1].split(':', 1)[1].strip()
+        print(f"Extracted message - User: {username}, Content: {message_content}")
+        return username, message_content
+    except IndexError as e:
+        print(f"Error parsing message: {e}")
+        return None, None
+
+def should_process_message(message, username):
+    if not message or not username:
+        print("Empty message or username")
+        return False
+        
+    # Demojize the message before checking conditions
+    clean_message = demojize(message)
+    print(f"Checking if should process message from {username}: {clean_message}")
+    
+    # Ignore messages starting with ! (bot commands)
+    if clean_message.startswith('!'):
+        print("Ignoring bot command")
+        return False
+    if username.startswith('A'):
+        print("Ignoring username starting with A")
+        return False
+    if username.lower() == 'nightbot':
+        print("Ignoring Nightbot")
+        return False
+    # Ignore very long messages
+    if len(clean_message) > 200:
+        print("Message too long")
+        return False
+        
+    print("Message approved for processing")
+    return True
+
+def store_twitch_message(username, message):
+    global collected_twitch_messages
+    
+    try:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] {username}: {demojize(message)}"  # Demojize only for log file
+        
+        # Always log formatted message to file
+        with open("twitch_messages.txt", "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
+        
+        # If collection is active and message meets criteria
+        if message.startswith(trigger_character):
+            collected_twitch_messages.append(f"{username}: {message}")
+            print(f"Collected message: {username}: {message}")
+        else:
+            print(f"Stored formatted message to log")
+    except Exception as e:
+        print(f"Error storing message: {e}")
+
+def listen_to_twitch(sock):
+    print("Starting Twitch listener...")
+    while True:
+        try:
+            resp = sock.recv(2048).decode('utf-8')
+            
+            if resp.startswith('PING'):
+                sock.send(f"PONG {resp.split()[1]}\n".encode('utf-8'))
+                continue
+                
+            if not resp.strip():
+                continue
+                
+            for line in resp.split('\r\n'):
+                if not line.strip():
+                    continue
+                    
+                username, message = process_twitch_message(line)
+                if message and username and should_process_message(message, username):
+                    store_twitch_message(username, message)
+                    
+        except Exception as e:
+            print(f"Error in Twitch listener: {e}")
+            time.sleep(5)
+    print("Starting Twitch listener...")
+    logging.basicConfig(level=logging.DEBUG,
+                       format='%(asctime)s - %(levelname)s - %(message)s',
+                       datefmt='%Y-%m-%d %H:%M:%S',
+                       handlers=[logging.FileHandler("twitch_chat.log", encoding='utf-8')])
+
+    while True:
+        try:
+            resp = sock.recv(2048).decode('utf-8')
+            print(f"Raw IRC response: {resp}")  # Debug raw IRC response
+
+            if not resp.strip():
+                print("Empty response, continuing...")
+                continue
+
+            if resp.startswith('PING'):
+                print("Received PING, sending PONG...")
+                sock.send(f"PONG {resp.split()[1]}\n".encode('utf-8'))
+                continue
+                
+            # Process each line separately
+            for line in resp.split('\r\n'):
+                if not line.strip():
+                    continue
+                    
+                print(f"Processing line: {line}")
+                username, message = process_twitch_message(line)
+                
+                if message and username and should_process_message(message, username):
+                    store_twitch_message(username, message)
+                    
+        except Exception as e:
+            print(f"Error in Twitch listener: {e}")
+            time.sleep(5)  # Wait before retrying
+
+
+@app.route('/get_twitch_messages', methods=['GET'])
+def get_twitch_messages():
+    return jsonify({
+        "message_count": len(collected_twitch_messages),
+        "messages": collected_twitch_messages[-10:]  # Return last 10 messages
+    })
+
+@app.route('/clear_twitch_messages', methods=['POST'])
+def clear_twitch_messages():
+    global collected_twitch_messages
+    collected_twitch_messages = []
+    return jsonify({"status": "success"})
+
+app.route('/process_twitch_messages', methods=['POST'])
+def process_twitch_messages():
+    global collected_twitch_messages
+    try:
+        if not collected_twitch_messages:
+            return jsonify({"status": "error", "message": "No messages collected"}), 400
+            
+        combined_messages = "\n".join(collected_twitch_messages)
+        response = requests.post(
+            "http://localhost:5000/process_input",
+            json={
+                'prompt': f"Twitch Chat Collection:\n{combined_messages}",
+                'use_browser_audio': 'true'
+            },
+            timeout=30
+        )
+        collected_twitch_messages = []  # Clear after processing
+        return jsonify({"status": "success", "response": response.json()})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route('/twitch_collection', methods=['GET'])
+def get_twitch_collection_status():
+    return jsonify({
+        "message_count": len(collected_twitch_messages),
+        "message": collected_twitch_messages
+    })
+
+###############################################
 
 # --- Flask Routes ---
 
@@ -111,12 +307,16 @@ def get_chat_history():
 
 @app.route('/process_input', methods=['POST'])
 def process_input():
-    # Get the user prompt from the request
     data = request.get_json()
     user_prompt = data.get('prompt', '').strip()
-    use_browser_audio = data.get('use_browser_audio', 'false').lower() == 'true'
+    
+    # Handle both string and boolean values for use_browser_audio
+    use_browser_audio = data.get('use_browser_audio', False)
+    if isinstance(use_browser_audio, str):
+        use_browser_audio = use_browser_audio.lower() == 'true'
+    else:
+        use_browser_audio = bool(use_browser_audio)
 
-    # If there's no prompt, return an error
     if not user_prompt:
         return jsonify({"error": "No prompt provided"}), 400
 
@@ -126,7 +326,7 @@ def process_input():
         ai_response = openai_result
 
         # Get the audio file path from ElevenLabsManager
-        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, False)
         
         # Use the file path directly (do not convert to bytes)
         audio_filename = f"response_{uuid.uuid4()}.mp3"
@@ -204,7 +404,7 @@ def process_audio():
         ai_response = openai_result  # The text response from the LLM
 
         # Convert the LLM response to speech
-        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, True)
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, False)
 
         if not audio_file_path_from_tts:
             return jsonify({"error": "Failed to generate speech audio"}), 500
@@ -244,22 +444,6 @@ def process_audio():
         print(f"Error in processing audio: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-#################TWITCH#########################
-
-app.route('/receive_message', methods=['POST'])
-def receive_message():
-    data = request.json
-    if 'message' in data:
-        chat_messages.append(data['message'])
-        return jsonify({"status": "success", "received": data['message']})
-    return jsonify({"status": "error", "message": "No message received"}), 400
-
-@app.route('/messages', methods=['GET'])
-def get_messages():
-    return jsonify(chat_messages)
-
-###############################################
 
 #TEST PLAYING AUDIO
 @app.route('/play_audio', methods=['GET'])
@@ -338,8 +522,8 @@ FIRST_SYSTEM_MESSAGE = read_system_message("system_message.txt", "system_message
 if FIRST_SYSTEM_MESSAGE:
     openai_manager.chat_history = [FIRST_SYSTEM_MESSAGE]
 else:
-    print("Error: Could not load system message. Using default.")
-    FIRST_SYSTEM_MESSAGE = {"role": "system", "content": "Default system message."}
+    print("Error: Could not load system message. Using History change character for new conversation.")
+    FIRST_SYSTEM_MESSAGE = read_system_message_from_txt("ChatHistoryBackup.txt")
     openai_manager.chat_history = [FIRST_SYSTEM_MESSAGE]
 
 # Global flags
@@ -416,6 +600,14 @@ flask_thread = threading.Thread(target=run_flask_app)
 flask_thread.daemon = True  # Allow the program to exit even if Flask is running
 flask_thread.start()
 
+try:
+        twitch_sock = connect_to_twitch(token, nickname, channel)
+        twitch_thread = threading.Thread(target=listen_to_twitch, args=(twitch_sock,))
+        twitch_thread.daemon = True
+        twitch_thread.start()
+        print("Twitch listener started in background")
+except Exception as e:
+        print(f"Failed to start Twitch listener: {e}")
 
 # Function to clean up old audio files
 def cleanup_old_audio_files(directory="/tmp", max_age_seconds=3600):
@@ -430,6 +622,9 @@ def cleanup_old_audio_files(directory="/tmp", max_age_seconds=3600):
 if __name__ == "__main__":
     main()
     cleanup_old_audio_files()
+
+
+
 
 # Main loop to check for mode
 while True:

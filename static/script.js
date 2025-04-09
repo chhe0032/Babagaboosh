@@ -8,6 +8,7 @@ const updateSystemMessageButton = document.getElementById("update-system-message
 let isRecording = false;
 let mediaRecorder;
 let audioChunks;
+let twitchRefreshInterval;
 
 // Function to fetch and populate system message options
 async function fetchSystemMessages() {
@@ -330,5 +331,61 @@ async function requestAndPlayAudio() {
         await playAudioInBrowser(audioUrl); // Calls your existing function
     } catch (error) {
         console.error("Error requesting and playing audio:", error);
+    }
+}
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    updateTwitchMessageCount();
+    twitchRefreshInterval = setInterval(updateTwitchMessageCount, 3000);
+    
+    document.getElementById('processMessagesBtn').addEventListener('click', processMessages);
+    document.getElementById('clearMessagesBtn').addEventListener('click', clearMessages);
+});
+
+async function updateTwitchMessageCount() {
+    try {
+        const response = await fetch('/get_twitch_messages');
+        const data = await response.json();
+        document.getElementById('messageCount').textContent = 
+            `${data.message_count} messages collected`;
+    } catch (error) {
+        console.error("Update error:", error);
+    }
+}
+
+async function processMessages() {
+    const btn = document.getElementById('processMessagesBtn');
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+    
+    try {
+        const response = await fetch('/process_twitch_messages', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            alert(`Processed ${data.response.message_count} messages successfully!`);
+        } else {
+            alert(`Error: ${data.message || "Unknown error"}`);
+        }
+    } catch (error) {
+        console.error("Processing error:", error);
+        alert("Failed to process messages");
+    } finally {
+        btn.textContent = "Process Messages";
+        btn.disabled = false;
+        updateTwitchMessageCount();
+    }
+}
+
+async function clearMessages() {
+    if (confirm("Clear all collected messages?")) {
+        try {
+            await fetch('/clear_twitch_messages', { method: 'POST' });
+            updateTwitchMessageCount();
+        } catch (error) {
+            console.error("Clear error:", error);
+        }
     }
 }
