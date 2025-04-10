@@ -74,42 +74,57 @@ class LocalAiManager:
         # Send the cleaned response to ElevenLabs
         return clean_answer
 
-    def chat_with_history(self, prompt=""):
-        if not prompt:
+    def chat_with_history(self, payload):
+        if not payload.get('prompt') and not payload.get('image'):
             print("Didn't receive input!")
-            return
+            return None
 
-        # Add the prompt into the chat history
-        self.chat_history.append({"role": "user", "content": prompt})
-
-        # Check total token limit and remove old messages as needed
-        print(f"[coral]Chat History has a current token length of {num_tokens_from_messages(self.chat_history)}")
-        while num_tokens_from_messages(self.chat_history) > 8000:
-            self.chat_history.pop(1)  # We skip the 1st message since it's the system message
-            print(f"Popped a message! New token length is: {num_tokens_from_messages(self.chat_history)}")
-
-        print("[yellow]\nAsking Local Model a question...")
-        chat_history_text = "\n".join([message["content"] for message in self.chat_history])
-        openai_answer = self._ask_local_model(chat_history_text)
-
-        if openai_answer:
-        # Remove thinking parts before passing it to ElevenLabs
-            clean_answer = remove_thinking_part(openai_answer)
-
-        # Add this clean answer to the chat history
-            self.chat_history.append({"role": "assistant", "content": clean_answer})
-
-        print(f"[green]\n{clean_answer}\n")
-
-        return clean_answer
+        # Prepare the user message content
+        user_message_content = payload.get('prompt', '')
     
-    def print_chat_history(self):
-        """Prints the entire chat history."""
-        print("\n[blue]Full Chat History:")
-        for index, message in enumerate(self.chat_history):
-            role = message["role"]
-            content = message["content"]
-            print(f"Message {index + 1}: [{role}] {content}\n")
+        # Add context if available
+        if payload.get('context'):
+            self.chat_history.append({
+                "role": "system", 
+                "content": f"Chat context:\n{payload['context']}"
+        })
+
+        # Build the user message
+        user_message = {
+            "role": "user",
+            "content": user_message_content
+        }
+    
+        if payload.get('image'):
+            user_message["images"] = [payload['image']]
+
+        # Add to chat history
+        self.chat_history.append(user_message)
+
+        for msg in self.chat_history:
+            if "images" in msg and msg is not user_message:
+                del msg["images"]
+
+
+        # Check token limit (using string representation for token counting)
+        while num_tokens_from_messages([{"content": str(msg.get('content', ''))} for msg in self.chat_history]) > 8000:
+            self.chat_history.pop(1)
+            print(f"Popped a message! New token length: {num_tokens_from_messages(self.chat_history)}")
+
+        # Call Ollama
+        print("[yellow]\nAsking Local Model a question...")
+        try:
+            response = ollama.chat(
+                model="deepseek-r1:8b",
+                messages=self.chat_history,
+                stream=False
+            )
+            clean_answer = remove_thinking_part(response["message"]["content"])
+            self.chat_history.append({"role": "assistant", "content": clean_answer})
+            return clean_answer
+        except Exception as e:
+            print(f"Error interacting with Ollama: {e}")
+        return None
 
 if __name__ == '__main__':
     local_ai_manager = LocalAiManager()

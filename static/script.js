@@ -104,7 +104,7 @@ async function updateSystemMessage() {
     }
 }
 
-// Function to send the user's prompt to the backend
+// Function to send the user's prompt and optional image to the backend
 async function sendPrompt() {
     const prompt = userInput.value.trim();
     if (!prompt) {
@@ -115,27 +115,38 @@ async function sendPrompt() {
     // Add the user's prompt to the chat history
     chatHistory.innerHTML += `<p><strong>You:</strong> ${prompt}</p>`;
 
-    // Send the prompt to the backend
+    // Prepare form data (supports both text and file)
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    
+    // Check if there's an image preview (from drag & drop)
+    const imageFile = document.getElementById('fileElem').files[0];
+    if (imageFile) {
+        formData.append('image', imageFile);
+    }
+
+    // Send the data to the backend
     try {
         const response = await fetch("/process_input", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ prompt: prompt }),
+            body: formData, // No Content-Type header for FormData!
         });
 
         if (!response.ok) {
             throw new Error("Failed to get response from the server.");
         }
 
-        // Get the JSON response which contains the text and audio URL
         const data = await response.json();
         const llmResponse = data.response;
-        //const audioUrl = data.audio_url;
-
+        
         // Add the LLM's response to the chat history
         chatHistory.innerHTML += `<p><strong>LLM:</strong> ${llmResponse}</p>`;
+        
+        // Clear the image preview if exists
+        if (imageFile) {
+            document.getElementById('preview').style.display = 'none';
+            document.getElementById('fileElem').value = '';
+        }
 
     } catch (error) {
         console.error("Error:", error);
@@ -334,3 +345,37 @@ async function requestAndPlayAudio() {
     }
 }
 
+const dropArea = document.getElementById("drop-area");
+const fileInput = document.getElementById("fileElem");
+const preview = document.getElementById("preview");
+
+dropArea.addEventListener("click", () => fileInput.click());
+
+dropArea.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropArea.style.backgroundColor = "#eee";
+});
+
+dropArea.addEventListener("dragleave", () => {
+    dropArea.style.backgroundColor = "#f9f9f9";
+});
+
+dropArea.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropArea.style.backgroundColor = "#f9f9f9";
+    if (e.dataTransfer.files.length) {
+        handleFiles(e.dataTransfer.files);
+    }
+});
+
+function handleFiles(files) {
+    const file = files[0];
+    if (file && file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            preview.src = e.target.result;
+            preview.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    }
+}

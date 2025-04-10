@@ -39,8 +39,25 @@ body {
     border-radius: 3px;
 }
 
-#messageCount {
-    margin-left: 15px;
-    font-style: italic;
-    color: #666;
+#upload-container {
+    margin-top: 20px;
+    padding: 10px;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+    text-align: center;
+}
+
+#drop-area {
+    padding: 20px;
+    cursor: pointer;
+    background-color: #f9f9f9;
+    transition: background-color 0.3s;
+}
+
+#drop-area:hover {
+    background-color: #f1f1f1;
+}
+
+#drop-area input {
+    display: none;
 }

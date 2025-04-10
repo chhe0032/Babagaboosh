@@ -18,6 +18,7 @@ import glob
 import uuid
 import socket
 import datetime
+import base64
 
 
 # Initialize Flask app
@@ -34,8 +35,8 @@ audio_manager = AudioManager()
 
 chat_messages = []
 nickname = 'InFernal_ger'
+token = 'oauth:ox2ooxr547y73cilummzywju7mtu92'
 channel = '#ClaudePlaysPokemon'
-
 
 
 #################TWITCH#########################
@@ -327,74 +328,74 @@ def get_chat_history():
 
 @app.route('/process_input', methods=['POST'])
 def process_input():
-    data = request.get_json()
-    user_prompt = data.get('prompt', '').strip()
-    
-    # Handle both string and boolean values for use_browser_audio
-    use_browser_audio = data.get('use_browser_audio', False)
-    if isinstance(use_browser_audio, str):
-        use_browser_audio = use_browser_audio.lower() == 'true'
-    else:
-        use_browser_audio = bool(use_browser_audio)
-
-    if not user_prompt:
-        return jsonify({"error": "No prompt provided"}), 400
-
     try:
+        # Handle both JSON (old) and FormData (new) requests
+        if request.content_type == 'application/json':
+            data = request.get_json()
+            user_prompt = data.get('prompt', '').strip()
+            image_data = None
+            use_browser_audio = data.get('use_browser_audio', False)
+        else:
+            user_prompt = request.form.get('prompt', '').strip()
+            use_browser_audio = request.form.get('use_browser_audio', 'false').lower() == 'true'
+            
+            # Handle image upload if present
+            image_data = None
+            if 'image' in request.files:
+                image_file = request.files['image']
+                if image_file.filename != '':
+                    # Convert image to base64 for Ollama
+                    image_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+        if not user_prompt and not image_data:
+            return jsonify({"error": "No prompt or image provided"}), 400
+
         # Thread-safe access to filtered messages
         with app.filtered_messages_lock:
             context_messages = app.filtered_messages_global.copy()
         
-        # Prepare context from filtered messages (last 10 messages)
+        # Prepare context
         context = "\n".join(
             f"{msg['username']}: {msg['content']}" 
             for msg in context_messages[-10:]
-        )
-        
-        # Enhance the prompt with context if we have filtered messages
-        enhanced_prompt = user_prompt
-        if context_messages:
-            enhanced_prompt = f"{user_prompt}\n\nChat Context:\n{context}"
-        
-        # Get the AI response from the LLM with enhanced prompt
-        openai_result = openai_manager.chat_with_history(enhanced_prompt)
-        ai_response = openai_result
+        ) if context_messages else None
 
-        # Get the audio file path from ElevenLabsManager
-        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, False)
+        # Prepare the payload for Ollama
+        ollama_payload = {
+            "prompt": user_prompt,
+            "context": context,
+            "image": image_data  
+        }
+
+        # Get the AI response from Ollama
+        ollama_response = openai_manager.chat_with_history(ollama_payload)
         
-        # Use the file path directly (do not convert to bytes)
+        # Rest of your audio processing remains the same
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ollama_response, ELEVENLABS_VOICE, False)
         audio_filename = f"response_{uuid.uuid4()}.mp3"
         audio_path = os.path.join("/tmp", audio_filename)
         
-        # Copy the generated file to /tmp so that it can be served to the browser
         with open(audio_file_path_from_tts, "rb") as src, open(audio_path, "wb") as dst:
             dst.write(src.read())
         
         with open(BACKUP_FILE, "w") as file:
             file.write(str(openai_manager.chat_history))
             
-        # Update OBS visibility before playback
+        # OBS visibility handling
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", True)
-
         if not use_browser_audio:
-            print("Playing audio locally...")
-            # Local playback using AudioManager
             audio_manager.play_audio(audio_path, True, True, True)
-        
-        # Reset OBS visibility after playback
         obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
         
-        # Prepare the response data with the audio URL for browser playback
-        response_data = {
-            "response": ai_response,
+        return jsonify({
+            "response": ollama_response,
             "audio_url": f"/audio/{audio_filename}",
             "context_message_count": len(context_messages)
-        }
-        return jsonify(response_data), 200
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
 
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
@@ -600,6 +601,7 @@ def on_press(key):
     except AttributeError:
         pass  # Handle other keys
 
+
 # Set up the listener for mode selection
 mode_listener = keyboard.Listener(on_press=on_press)
 mode_listener.start()
@@ -647,6 +649,7 @@ def handle_writing_mode():
             obswebsockets_manager.set_source_visibility("*** Mid Monitor", "Madeira Flag", False)
             print("[green]Finished processing dialogue. Ready for next input.")
 
+
 # Start the Flask app in a separate thread
 flask_thread = threading.Thread(target=run_flask_app)
 flask_thread.daemon = True  # Allow the program to exit even if Flask is running
@@ -674,7 +677,6 @@ def cleanup_old_audio_files(directory="/tmp", max_age_seconds=3600):
 if __name__ == "__main__":
     main()
     cleanup_old_audio_files()
-
 
 
 
