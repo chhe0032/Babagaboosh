@@ -36,7 +36,7 @@ audio_manager = AudioManager()
 chat_messages = []
 token = 'oauth:'
 nickname = 'InFernal_ger'
-token = 'oauth:ox2ooxr547y73cilummzywju7mtu92'
+token = 'oauth:'
 channel = '#ClaudePlaysPokemon'
 
 
