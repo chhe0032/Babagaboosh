@@ -34,6 +34,7 @@ openai_manager = LocalAiManager()
 audio_manager = AudioManager()
 
 chat_messages = []
+token = 'oauth:'
 nickname = 'InFernal_ger'
 token = 'oauth:ox2ooxr547y73cilummzywju7mtu92'
 channel = '#ClaudePlaysPokemon'
