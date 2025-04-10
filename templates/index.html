@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Chat Interface</title>
     <link rel="stylesheet" href='../static/styles.css'>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
 </head>
 <body>
     <div id="system-message-container">
@@ -21,13 +22,6 @@
     <button id="send-button">Send</button>
     <button id="record-button">Start Recording</button>
     <div class="twitch-control">
-        <button id="processMessagesBtn" class="btn btn-primary">
-            Process Messages
-        </button>
-        <span id="messageCount">0 messages waiting</span>
-        <button id="clearMessagesBtn" class="btn btn-secondary">
-            Clear
-        </button>
     </div>
     <script src='../static/script.js'></script>
 </body>

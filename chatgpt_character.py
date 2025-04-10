@@ -3,6 +3,7 @@ from pynput import keyboard
 from pydub import AudioSegment
 from rich import print
 from flask import Flask, request, jsonify, send_from_directory, render_template, send_file
+from threading import Lock
 from whisper_speech_to_text import SpeechToTextManager
 from openai_chat import LocalAiManager
 from eleven_labs import ElevenLabsManager
@@ -16,12 +17,13 @@ import threading
 import glob
 import uuid
 import socket
-import logging
 import datetime
-import requests
+
 
 # Initialize Flask app
 app = Flask(__name__)
+app.filtered_messages_lock = Lock()
+app.filtered_messages_global = []
 
 # Initialize Managers
 elevenlabs_manager = ElevenLabsManager()
@@ -32,11 +34,9 @@ audio_manager = AudioManager()
 
 chat_messages = []
 nickname = 'InFernal_ger'
-token = 'oauth:bpnxrqwrmffqmhg640hfbcsm0qa285'
 channel = '#ClaudePlaysPokemon'
 
-collected_twitch_messages = []
-trigger_character = "I"  # Character that triggers message collection
+
 
 #################TWITCH#########################
 
@@ -86,11 +86,13 @@ def should_process_message(message, username):
     if clean_message.startswith('!'):
         print("Ignoring bot command")
         return False
-    if username.startswith('A'):
-        print("Ignoring username starting with A")
+    if clean_message.__contains__('Hitler'):
         return False
     if username.lower() == 'nightbot':
         print("Ignoring Nightbot")
+        return False
+    if username.lower() == 'moobot':
+        print("Ignoring Moobot")
         return False
     # Ignore very long messages
     if len(clean_message) > 200:
@@ -110,13 +112,8 @@ def store_twitch_message(username, message):
         # Always log formatted message to file
         with open("twitch_messages.txt", "a", encoding="utf-8") as f:
             f.write(log_entry + "\n")
-        
-        # If collection is active and message meets criteria
-        if message.startswith(trigger_character):
-            collected_twitch_messages.append(f"{username}: {message}")
-            print(f"Collected message: {username}: {message}")
-        else:
-            print(f"Stored formatted message to log")
+            print(f"Stored message to file: {log_entry}")
+
     except Exception as e:
         print(f"Error storing message: {e}")
 
@@ -144,82 +141,100 @@ def listen_to_twitch(sock):
         except Exception as e:
             print(f"Error in Twitch listener: {e}")
             time.sleep(5)
-    print("Starting Twitch listener...")
-    logging.basicConfig(level=logging.DEBUG,
-                       format='%(asctime)s - %(levelname)s - %(message)s',
-                       datefmt='%Y-%m-%d %H:%M:%S',
-                       handlers=[logging.FileHandler("twitch_chat.log", encoding='utf-8')])
-
-    while True:
-        try:
-            resp = sock.recv(2048).decode('utf-8')
-            print(f"Raw IRC response: {resp}")  # Debug raw IRC response
-
-            if not resp.strip():
-                print("Empty response, continuing...")
-                continue
-
-            if resp.startswith('PING'):
-                print("Received PING, sending PONG...")
-                sock.send(f"PONG {resp.split()[1]}\n".encode('utf-8'))
-                continue
-                
-            # Process each line separately
-            for line in resp.split('\r\n'):
-                if not line.strip():
-                    continue
-                    
-                print(f"Processing line: {line}")
-                username, message = process_twitch_message(line)
-                
-                if message and username and should_process_message(message, username):
-                    store_twitch_message(username, message)
-                    
-        except Exception as e:
-            print(f"Error in Twitch listener: {e}")
-            time.sleep(5)  # Wait before retrying
 
 
-@app.route('/get_twitch_messages', methods=['GET'])
-def get_twitch_messages():
-    return jsonify({
-        "message_count": len(collected_twitch_messages),
-        "messages": collected_twitch_messages[-10:]  # Return last 10 messages
-    })
-
-@app.route('/clear_twitch_messages', methods=['POST'])
-def clear_twitch_messages():
     global collected_twitch_messages
     collected_twitch_messages = []
     return jsonify({"status": "success"})
 
-app.route('/process_twitch_messages', methods=['POST'])
-def process_twitch_messages():
-    global collected_twitch_messages
+@app.route('/twitch_messages')
+def get_twitch_messages():
     try:
-        if not collected_twitch_messages:
-            return jsonify({"status": "error", "message": "No messages collected"}), 400
-            
-        combined_messages = "\n".join(collected_twitch_messages)
-        response = requests.post(
-            "http://localhost:5000/process_input",
-            json={
-                'prompt': f"Twitch Chat Collection:\n{combined_messages}",
-                'use_browser_audio': 'true'
-            },
-            timeout=30
-        )
-        collected_twitch_messages = []  # Clear after processing
-        return jsonify({"status": "success", "response": response.json()})
+        with open("twitch_messages.txt", "r", encoding="utf-8") as f:
+            messages = f.readlines()
+        return jsonify({"messages": messages})
+    except FileNotFoundError:
+        return jsonify({"error": "No messages file found"}), 404
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/twitch_collection', methods=['GET'])
-def get_twitch_collection_status():
-    return jsonify({
-        "message_count": len(collected_twitch_messages),
-        "message": collected_twitch_messages
-    })
+@app.route('/clear_twitch_messages')
+def clear_twitch_messages():
+    try:
+        open("twitch_messages.txt", "w").close()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/filtered_twitch_messages')
+def get_filtered_twitch_messages():
+    try:
+        # Get query parameters
+        starts_with = request.args.get('starts_with')
+        username_contains = request.args.get('username_contains')
+        username_starts_with = request.args.get('username_starts_with')
+        message_contains = request.args.get('message_contains')
+        
+        with open("twitch_messages.txt", "r", encoding="utf-8") as f:
+            messages = f.readlines()
+        
+        filtered_messages = []
+        new_filtered_global = []  # Local storage before committing to global
+
+        for message in messages:
+            try:
+                # Parse the message format: [timestamp] username: message
+                parts = message.split('] ', 1)
+                if len(parts) < 2:
+                    continue
+                
+                username_part = parts[1].split(': ', 1)
+                if len(username_part) < 2:
+                    continue
+                
+                username = username_part[0]
+                message_content = username_part[1].strip()
+                
+                # Apply filters
+                match = True
+                
+                if starts_with and not message_content.startswith(starts_with):
+                    match = False
+                if username_contains and username_contains.lower() not in username.lower():
+                    match = False
+                if username_starts_with and not username.lower().startswith(username_starts_with.lower()):
+                    match = False
+                if message_contains and message_contains.lower() not in message_content.lower():
+                    match = False
+                
+                if match:
+                    filtered_messages.append(message.strip())  # Full message for API
+                    new_filtered_global.append({
+                        'content': message_content,
+                        'username': username,
+                        'timestamp': parts[0][1:]  # Remove leading '['
+                    })
+                    
+            except Exception as e:
+                print(f"Error processing message line: {e}")
+                continue
+        
+        # Thread-safe update of global storage
+        with app.filtered_messages_lock:
+            app.filtered_messages_global = new_filtered_global
+        
+        return jsonify({
+            "status": "success",
+            "filtered_messages_count": len(filtered_messages),
+            "messages": filtered_messages
+        })
+        
+    except FileNotFoundError:
+        return jsonify({"error": "No messages file found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
 ###############################################
 
@@ -228,6 +243,11 @@ def get_twitch_collection_status():
 @app.route('/')
 def index():
     return render_template("index.html")
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                              'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route('/get_system_messages', methods=['GET'])
 def get_system_messages():
@@ -321,8 +341,23 @@ def process_input():
         return jsonify({"error": "No prompt provided"}), 400
 
     try:
-        # Get the AI response from the LLM
-        openai_result = openai_manager.chat_with_history(user_prompt)
+        # Thread-safe access to filtered messages
+        with app.filtered_messages_lock:
+            context_messages = app.filtered_messages_global.copy()
+        
+        # Prepare context from filtered messages (last 10 messages)
+        context = "\n".join(
+            f"{msg['username']}: {msg['content']}" 
+            for msg in context_messages[-10:]
+        )
+        
+        # Enhance the prompt with context if we have filtered messages
+        enhanced_prompt = user_prompt
+        if context_messages:
+            enhanced_prompt = f"{user_prompt}\n\nChat Context:\n{context}"
+        
+        # Get the AI response from the LLM with enhanced prompt
+        openai_result = openai_manager.chat_with_history(enhanced_prompt)
         ai_response = openai_result
 
         # Get the audio file path from ElevenLabsManager
@@ -353,7 +388,8 @@ def process_input():
         # Prepare the response data with the audio URL for browser playback
         response_data = {
             "response": ai_response,
-            "audio_url": f"/audio/{audio_filename}"
+            "audio_url": f"/audio/{audio_filename}",
+            "context_message_count": len(context_messages)
         }
         return jsonify(response_data), 200
 
@@ -395,13 +431,29 @@ def process_audio():
 
         print(f"Transcription: {transcription}")
 
+        # Thread-safe access to filtered messages
+        with app.filtered_messages_lock:
+            context_messages = app.filtered_messages_global.copy()
+        
+        # Prepare context from filtered messages (last 10 messages)
+        context = "\n".join(
+            f"{msg['username']}: {msg['content']}" 
+            for msg in context_messages[-10:]
+        ) if context_messages else None
+
+        # Enhance the transcription with context if available
+        enhanced_transcription = transcription
+        if context:
+            enhanced_transcription = f"{transcription}\n\nChat Context:\n{context}"
+            print(f"Enhanced transcription with {len(context_messages)} context messages")
+
+        # Process the transcribed text (with optional context)
+        openai_result = openai_manager.chat_with_history(enhanced_transcription)
+        ai_response = openai_result  # The text response from the LLM
+
         # Generate a unique filename for the response audio
         audio_filename = f"response_{uuid.uuid4()}.mp3"
         response_audio_path = os.path.join("/tmp", audio_filename)
-
-        # Process the transcribed text
-        openai_result = openai_manager.chat_with_history(transcription)
-        ai_response = openai_result  # The text response from the LLM
 
         # Convert the LLM response to speech
         audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ai_response, ELEVENLABS_VOICE, False)
@@ -431,7 +483,8 @@ def process_audio():
         response_data = {
             "transcribed_text": transcription,
             "response": ai_response,
-            "audio_url": f"/audio/{audio_filename}"
+            "audio_url": f"/audio/{audio_filename}",
+            "context_message_count": len(context_messages) if context_messages else 0
         }
 
         # Clean up temporary input files
@@ -443,7 +496,6 @@ def process_audio():
     except Exception as e:
         print(f"Error in processing audio: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 #TEST PLAYING AUDIO
 @app.route('/play_audio', methods=['GET'])
