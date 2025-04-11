@@ -34,7 +34,6 @@ openai_manager = LocalAiManager()
 audio_manager = AudioManager()
 
 chat_messages = []
-token = 'oauth:'
 nickname = 'InFernal_ger'
 token = 'oauth:'
 channel = '#ClaudePlaysPokemon'
@@ -176,16 +175,17 @@ def get_filtered_twitch_messages():
         username_contains = request.args.get('username_contains')
         username_starts_with = request.args.get('username_starts_with')
         message_contains = request.args.get('message_contains')
+        group_filter = request.args.get('group')  
         
         with open("twitch_messages.txt", "r", encoding="utf-8") as f:
             messages = f.readlines()
         
         filtered_messages = []
-        new_filtered_global = []  # Local storage before committing to global
+        new_filtered_global = []
 
         for message in messages:
             try:
-                # Parse the message format: [timestamp] username: message
+                # Parse the message
                 parts = message.split('] ', 1)
                 if len(parts) < 2:
                     continue
@@ -200,6 +200,7 @@ def get_filtered_twitch_messages():
                 # Apply filters
                 match = True
                 
+                # Existing filters
                 if starts_with and not message_content.startswith(starts_with):
                     match = False
                 if username_contains and username_contains.lower() not in username.lower():
@@ -209,12 +210,30 @@ def get_filtered_twitch_messages():
                 if message_contains and message_contains.lower() not in message_content.lower():
                     match = False
                 
+                # New group filtering logic
+                if group_filter:
+                    if username:  # Ensure username isn't empty
+                        first_char = username[0].lower()
+                        
+                        # Group 1: A-J (a-j) and 0-4
+                        if group_filter == 'group1':
+                            if not ((first_char >= 'a' and first_char <= 'j') or 
+                                   (first_char.isdigit() and int(first_char) <= 4)):
+                                match = False
+                        
+                        # Group 2: K-Z (k-z) and 5-9
+                        elif group_filter == 'group2':
+                            if not ((first_char >= 'k' and first_char <= 'z') or 
+                                   (first_char.isdigit() and int(first_char) >= 5)):
+                                match = False
+                
                 if match:
-                    filtered_messages.append(message.strip())  # Full message for API
+                    filtered_messages.append(message.strip())
                     new_filtered_global.append({
                         'content': message_content,
                         'username': username,
-                        'timestamp': parts[0][1:]  # Remove leading '['
+                        'timestamp': parts[0][1:],
+                        'group': group_filter
                     })
                     
             except Exception as e:
@@ -228,14 +247,16 @@ def get_filtered_twitch_messages():
         return jsonify({
             "status": "success",
             "filtered_messages_count": len(filtered_messages),
-            "messages": filtered_messages
+            "messages": filtered_messages,
+            "group": group_filter,
+            "group1_count": sum(1 for msg in new_filtered_global if msg.get('group') == 'group1'),
+            "group2_count": sum(1 for msg in new_filtered_global if msg.get('group') == 'group2')
         })
         
     except FileNotFoundError:
         return jsonify({"error": "No messages file found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 
 ###############################################
