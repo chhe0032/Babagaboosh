@@ -6,10 +6,22 @@ body {
 #chat-history {
     border: 1px solid #ccc;
     padding: 10px;
-    height: 300px;
+    height: 600px;
     overflow-y: scroll;
     margin-bottom: 10px;
 }
+
+#update-system-message-button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    font-size: 16px;
+}
+
+#system-message-select {
+    padding: 10px;
+    font-size: 16px;
+}
+
 #user-input {
     width: 80%;
     padding: 10px;
@@ -20,6 +32,7 @@ body {
     font-size: 16px;
 }
 #record-button {
+    margin-top: 10px;
     padding: 10px 20px;
     font-size: 16px;
 }
@@ -60,4 +73,6 @@ body {
 
 #drop-area input {
     display: none;
+    max-width: 100%;
+    margin-top: 10px;
 }
