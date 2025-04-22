@@ -26,12 +26,6 @@ def num_tokens_from_messages(messages, model='ollama'):
         print(f"Error: {str(e)}")
         raise NotImplementedError(f"num_tokens_from_messages() is not presently implemented for model {model}.")
     
-def remove_thinking_part(text):
-    # This pattern matches any section that starts with <think> and ends with <end_think>, or any other relevant format
-    trimmed_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)  # Removing <think> tags and content between
-    trimmed_text = trimmed_text.strip()  # Clean up leading/trailing whitespace
-    return trimmed_text
-
 
 class LocalAiManager:
     def __init__(self):
@@ -42,7 +36,7 @@ class LocalAiManager:
         try:
             # Send the prompt to the Ollama model (deepseek-r1)
             response = ollama.chat(
-                model="deepseek-r1:8b", # needs to be changed to the local model!!!!!
+                model="qwq:32b", # needs to be changed to the local model!!!!!
                 messages=[{"role": "user", "content": prompt}],
                 stream=False  # Non-streaming response
             )
@@ -65,14 +59,10 @@ class LocalAiManager:
         print("[yellow]\nAsking Local Model a question...")
         openai_answer = self._ask_local_model(prompt)
 
-     
         if openai_answer:
-        # Remove thinking parts before passing it to ElevenLabs
-            clean_answer = remove_thinking_part(openai_answer)
-            print(f"[green]\n{clean_answer}\n")
-
-        # Send the cleaned response to ElevenLabs
-        return clean_answer
+            # Return the full answer without removing any thinking parts
+            print(f"[green]\n{openai_answer}\n")
+            return openai_answer
 
     def chat_with_history(self, payload):
         if not payload.get('prompt') and not payload.get('image'):
@@ -105,7 +95,6 @@ class LocalAiManager:
             if "images" in msg and msg is not user_message:
                 del msg["images"]
 
-
         # Check token limit (using string representation for token counting)
         while num_tokens_from_messages([{"content": str(msg.get('content', ''))} for msg in self.chat_history]) > 8000:
             self.chat_history.pop(1)
@@ -115,16 +104,24 @@ class LocalAiManager:
         print("[yellow]\nAsking Local Model a question...")
         try:
             response = ollama.chat(
-                model="deepseek-r1:8b",
+                model="qwq:32b",  # needs to be changed to the local model!!!!!
                 messages=self.chat_history,
                 stream=False
             )
-            clean_answer = remove_thinking_part(response["message"]["content"])
-            self.chat_history.append({"role": "assistant", "content": clean_answer})
-            return clean_answer
+            # Use the full response without removing thinking parts
+            full_answer = response["message"]["content"]
+            self.chat_history.append({"role": "assistant", "content": full_answer})
+            return full_answer
         except Exception as e:
             print(f"Error interacting with Ollama: {e}")
         return None
+
+    def print_chat_history(self):
+        """Helper method to print the chat history"""
+        for message in self.chat_history:
+            role = message["role"]
+            content = message["content"]
+            print(f"[{'blue' if role == 'user' else 'green'}]{role}: {content}\n")
 
 if __name__ == '__main__':
     local_ai_manager = LocalAiManager()
@@ -140,5 +137,6 @@ if __name__ == '__main__':
 
     while True:
         new_prompt = input("\nType out your next question Jack Sparrow, then hit enter: \n\n")
-        local_ai_manager.chat_with_history(new_prompt)
+        # The payload should be a dictionary with at least a 'prompt' key
+        local_ai_manager.chat_with_history({'prompt': new_prompt})
         local_ai_manager.print_chat_history()

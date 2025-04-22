@@ -36,7 +36,7 @@ audio_manager = AudioManager()
 chat_messages = []
 nickname = 'InFernal_ger'
 token = 'oauth:'
-channel = '#ClaudePlaysPokemon'
+channel = '#iti_research'
 
 
 #################TWITCH#########################
@@ -357,9 +357,11 @@ def process_input():
             user_prompt = data.get('prompt', '').strip()
             image_data = None
             use_browser_audio = data.get('use_browser_audio', False)
+            voice = data.get('voice')
         else:
             user_prompt = request.form.get('prompt', '').strip()
             use_browser_audio = request.form.get('use_browser_audio', 'false').lower() == 'true'
+            voice = request.form.get('voice')
             
             # Handle image upload if present
             image_data = None
@@ -393,7 +395,7 @@ def process_input():
         ollama_response = openai_manager.chat_with_history(ollama_payload)
         
         # Rest of your audio processing remains the same
-        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ollama_response, ELEVENLABS_VOICE, False)
+        audio_file_path_from_tts = elevenlabs_manager.text_to_audio(ollama_response, voice=voice, save_as_wave=False)
         audio_filename = f"response_{uuid.uuid4()}.mp3"
         audio_path = os.path.join("/tmp", audio_filename)
         
@@ -412,7 +414,8 @@ def process_input():
         return jsonify({
             "response": ollama_response,
             "audio_url": f"/audio/{audio_filename}",
-            "context_message_count": len(context_messages)
+            "context_message_count": len(context_messages),
+            "voice_used": elevenlabs_manager.default_voice if voice is None else voice
         })
 
     except Exception as e:
@@ -535,6 +538,26 @@ def play_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/set_voice/<voice_name>', methods=['GET', 'POST'])
+def set_voice(voice_name):
+    try:
+        elevenlabs_manager.set_voice(voice_name)
+        return jsonify({
+            "status": "success",
+            "voice": voice_name,
+            "available_voices": list(elevenlabs_manager.available_voices.keys())
+        })
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    
+@app.route('/list_voices', methods=['GET'])
+def list_voices():
+    """List all available ElevenLabs voices."""
+    try:
+        voices = [v.name for v in elevenlabs_manager.response.voices]
+        return jsonify({"voices": voices})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Function to run the Flask app in a separate thread
 def run_flask_app():
@@ -544,7 +567,6 @@ def run_flask_app():
 def main():
     global elevenlabs_manager, obswebsockets_manager, speechtotext_manager, openai_manager, audio_manager
 
-ELEVENLABS_VOICE = "Drew"  # Replace with your ElevenLabs voice
 BACKUP_FILE = "ChatHistoryBackup.txt"
 
 # Function to read txt or PDF
