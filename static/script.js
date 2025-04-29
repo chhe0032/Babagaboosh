@@ -157,6 +157,7 @@ async function sendPrompt() {
     userInput.value = "";
 }
 
+
 function startRecording() {
     audioChunks = [];
     

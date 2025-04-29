@@ -1,6 +1,9 @@
 import ollama
 import tiktoken
 import re
+import os
+import datetime
+from pathlib import Path
 from rich import print
 
 
@@ -25,22 +28,52 @@ def num_tokens_from_messages(messages, model='ollama'):
     except Exception as e:
         print(f"Error: {str(e)}")
         raise NotImplementedError(f"num_tokens_from_messages() is not presently implemented for model {model}.")
+
+def remove_thinking_part(text):
+    # This pattern matches any section that starts with <think> and ends with <end_think>, or any other relevant format
+    trimmed_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)  # Removing <think> tags and content between
+    trimmed_text = trimmed_text.strip()  # Clean up leading/trailing whitespace
+    return trimmed_text
+
     
 
 class LocalAiManager:
     def __init__(self):
         self.chat_history = []  # Stores the entire conversation
+        self.backup_file = "conversation_backup.txt"  # Permanent backup file
+        self._initialize_backup()
+    
+    def _initialize_backup(self):
+        """Create backup file if it doesn't exist"""
+        if not os.path.exists(self.backup_file):
+            with open(self.backup_file, 'w') as f:
+                f.write("=== Conversation Backup ===\n")
+    
+    def _save_to_backup(self, role, content):
+        """Append a message to the backup file with timestamp"""
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(self.backup_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n[{timestamp}] {role}:\n{content}\n")
+            f.write("-" * 40 + "\n")  # Separator line
 
     def _ask_local_model(self, prompt):
         """Send a request to the local Ollama model."""
         try:
-            # Send the prompt to the Ollama model (deepseek-r1)
+            # Save the user prompt to backup
+            self._save_to_backup("USER", prompt)
+            
+            # Send the prompt to the Ollama model
             response = ollama.chat(
-                model="qwq:32b", # needs to be changed to the local model!!!!!
+                model="qwq:32b",
                 messages=[{"role": "user", "content": prompt}],
-                stream=False  # Non-streaming response
+                stream=False
             )
-            return response["message"]["content"]  # Extracting the message content from the response
+            full_response = response["message"]["content"]
+            
+            # Save the full response (including thinking parts) to backup
+            self._save_to_backup("ASSISTANT (FULL)", full_response)
+            
+            return full_response
         except Exception as e:
             print(f"Error interacting with Ollama: {e}")
             return None
@@ -50,34 +83,39 @@ class LocalAiManager:
             print("Didn't receive input!")
             return
 
-        # Check if the prompt is under the token context limit (same as before)
+        # Check token limit
         chat_question = [{"role": "user", "content": prompt}]
         if num_tokens_from_messages(chat_question) > 8000:
             print("The length of this chat question is too large for the model")
             return
 
         print("[yellow]\nAsking Local Model a question...")
-        openai_answer = self._ask_local_model(prompt)
+        full_response = self._ask_local_model(prompt)
 
-        if openai_answer:
-            # Return the full answer without removing any thinking parts
-            print(f"[green]\n{openai_answer}\n")
-            return openai_answer
+        if full_response:
+            clean_answer = remove_thinking_part(full_response)
+            print(f"[green]\n{clean_answer}\n")
+            # Save the cleaned response to backup as well
+            self._save_to_backup("ASSISTANT (CLEAN)", clean_answer)
+            return clean_answer
 
     def chat_with_history(self, payload):
         if not payload.get('prompt') and not payload.get('image'):
             print("Didn't receive input!")
             return None
 
-        # Prepare the user message content
+        # Prepare and save user message
         user_message_content = payload.get('prompt', '')
+        self._save_to_backup("USER", user_message_content)
     
         # Add context if available
         if payload.get('context'):
-            self.chat_history.append({
+            context_message = {
                 "role": "system", 
                 "content": f"Chat context:\n{payload['context']}"
-        })
+            }
+            self.chat_history.append(context_message)
+            self._save_to_backup("SYSTEM", context_message["content"])
 
         # Build the user message
         user_message = {
@@ -91,37 +129,40 @@ class LocalAiManager:
         # Add to chat history
         self.chat_history.append(user_message)
 
+        # Clean images from previous messages
         for msg in self.chat_history:
             if "images" in msg and msg is not user_message:
                 del msg["images"]
 
-        # Check token limit (using string representation for token counting)
+        # Check token limit
         while num_tokens_from_messages([{"content": str(msg.get('content', ''))} for msg in self.chat_history]) > 8000:
-            self.chat_history.pop(1)
+            removed = self.chat_history.pop(1)
             print(f"Popped a message! New token length: {num_tokens_from_messages(self.chat_history)}")
+            self._save_to_backup("SYSTEM", f"Removed message due to token limit: {removed['content']}")
 
         # Call Ollama
         print("[yellow]\nAsking Local Model a question...")
         try:
             response = ollama.chat(
-                model="qwq:32b",  # needs to be changed to the local model!!!!!
+                model="qwq:32b",
                 messages=self.chat_history,
                 stream=False
             )
-            # Use the full response without removing thinking parts
-            full_answer = response["message"]["content"]
-            self.chat_history.append({"role": "assistant", "content": full_answer})
-            return full_answer
+            full_response = response["message"]["content"]
+            clean_answer = remove_thinking_part(full_response)
+            
+            # Save both versions to backup
+            self._save_to_backup("ASSISTANT (FULL)", full_response)
+            self._save_to_backup("ASSISTANT (CLEAN)", clean_answer)
+            
+            # Add cleaned version to chat history
+            self.chat_history.append({"role": "assistant", "content": clean_answer})
+            
+            return clean_answer
         except Exception as e:
             print(f"Error interacting with Ollama: {e}")
+            self._save_to_backup("SYSTEM", f"Error: {str(e)}")
         return None
-
-    def print_chat_history(self):
-        """Helper method to print the chat history"""
-        for message in self.chat_history:
-            role = message["role"]
-            content = message["content"]
-            print(f"[{'blue' if role == 'user' else 'green'}]{role}: {content}\n")
 
 if __name__ == '__main__':
     local_ai_manager = LocalAiManager()

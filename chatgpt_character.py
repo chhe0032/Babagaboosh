@@ -19,6 +19,7 @@ import uuid
 import socket
 import datetime
 import base64
+import requests
 
 
 # Initialize Flask app
@@ -35,11 +36,12 @@ audio_manager = AudioManager()
 
 chat_messages = []
 nickname = 'InFernal_ger'
-token = 'oauth:'
 channel = '#iti_research'
 
 
-#################TWITCH#########################
+last_voice_change_time = 0
+voice_cooldown = 300  # 5 minutes in seconds
+voice_lock = Lock()
 
 def connect_to_twitch(token, nickname, channel):
     try:
@@ -69,6 +71,12 @@ def process_twitch_message(message):
         # Extract message content
         message_content = message.split('PRIVMSG', 1)[1].split(':', 1)[1].strip()
         print(f"Extracted message - User: {username}, Content: {message_content}")
+        
+        # Handle voice commands immediately
+        if message_content.startswith('!voice'):
+            handle_voice_command(username, message_content)
+            return None, None  # Don't process voice commands as regular messages
+            
         return username, message_content
     except IndexError as e:
         print(f"Error parsing message: {e}")
@@ -83,7 +91,11 @@ def should_process_message(message, username):
     clean_message = demojize(message)
     print(f"Checking if should process message from {username}: {clean_message}")
     
-    # Ignore messages starting with ! (bot commands)
+    # Special case: we already handled !voice commands in process_twitch_message
+    if clean_message.startswith('!voice'):
+        return False
+    
+    # Rest of your existing filters
     if clean_message.startswith('!'):
         print("Ignoring bot command")
         return False
@@ -95,7 +107,6 @@ def should_process_message(message, username):
     if username.lower() == 'moobot':
         print("Ignoring Moobot")
         return False
-    # Ignore very long messages
     if len(clean_message) > 200:
         print("Message too long")
         return False
@@ -258,7 +269,112 @@ def get_filtered_twitch_messages():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def load_voices_from_file():
+    """Load available voices from Voices.txt"""
+    voices = {}
+    try:
+        with open("Voices.txt", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and '-' in line:
+                    name, desc = line.split('-', 1)
+                    voices[name.strip()] = desc.strip()
+        return voices
+    except FileNotFoundError:
+        print("Voices.txt not found, using default voices")
+        return {
+            "James": "Husky & Engaging",
+            "Hope": "soothing narrator",
+            "David": "British Documentary",
+            "Matthew Schmitz": "Old Timer Mountain Man",
+            "Emma": "Adorable and Upbeat",
+            "Emily": "Whisper",
+            "David": "Epic Movie Trailer "
+        }
 
+    
+def handle_voice_command(username, message):
+    global last_voice_change_time
+    
+    try:
+        parts = message.split()
+        available_voices = list(elevenlabs_manager.available_voices.keys())
+        
+        # Show current voice if no argument
+        if len(parts) == 1:
+            current_voice = elevenlabs_manager.default_voice
+            send_twitch_message(f"Current voice: {current_voice}")
+            print(f"Displayed current voice: {current_voice}")
+            
+            # Also show available voices
+            voice_list = "\n".join(
+                f"{i+1}. {v}" for i, v in enumerate(available_voices)
+            )
+            send_twitch_message(f"Available voices:\n{voice_list}")
+            return
+            
+        # Check cooldown
+        current_time = time.time()
+        if current_time - last_voice_change_time < voice_cooldown:
+            remaining = int(voice_cooldown - (current_time - last_voice_change_time))
+            msg = f"Voice cooldown active! Please wait {remaining//60}m {remaining%60}s"
+            send_twitch_message(msg)
+            print(msg)
+            return
+            
+        # Process voice change
+        voice_arg = ' '.join(parts[1:])  # Handle multi-word voice names
+        
+        # Try numeric selection first
+        if voice_arg.isdigit():
+            voice_num = int(voice_arg) - 1
+            if 0 <= voice_num < len(available_voices):
+                new_voice = available_voices[voice_num]
+            else:
+                send_twitch_message(f"Please choose 1-{len(available_voices)}")
+                return
+        else:
+            # Find best matching voice name (case insensitive)
+            new_voice = None
+            for voice in available_voices:
+                if voice.lower() == voice_arg.lower():
+                    new_voice = voice
+                    break
+            
+            if not new_voice:
+                send_twitch_message(f"Unknown voice. Options: {', '.join(f'{i+1}. {v}' for i, v in enumerate(available_voices))}")
+                return
+        
+        # Change the voice
+        print(f"Attempting to change voice to: {new_voice}")
+        response = requests.post(
+            f"http://localhost:5000/set_voice/{new_voice}",
+            timeout=2
+        )
+        
+        if response.ok:
+            last_voice_change_time = current_time
+            msg = f"Voice changed to {new_voice} (Cooldown: 5m)"
+            send_twitch_message(msg)
+            print(msg)
+        else:
+            error_msg = response.json().get('message', 'Failed to change voice')
+            send_twitch_message(f"Error: {error_msg}")
+            print(f"Voice change failed: {error_msg}")
+            
+    except Exception as e:
+        error_msg = f"Error handling voice command: {str(e)}"
+        print(error_msg)
+        send_twitch_message("Error processing voice command")
+
+def send_twitch_message(message):
+    """Send a message back to Twitch chat"""
+    try:
+        twitch_sock.send(f"PRIVMSG {channel} :{message}\n".encode('utf-8'))
+    except Exception as e:
+        print(f"Error sending Twitch message: {e}")
+# Preload voices
+TWITCH_VOICES = load_voices_from_file()
 ###############################################
 
 # --- Flask Routes ---
@@ -538,26 +654,47 @@ def play_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/set_voice/<voice_name>', methods=['GET', 'POST'])
-def set_voice(voice_name):
-    try:
-        elevenlabs_manager.set_voice(voice_name)
-        return jsonify({
-            "status": "success",
-            "voice": voice_name,
-            "available_voices": list(elevenlabs_manager.available_voices.keys())
-        })
-    except ValueError as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
-    
-@app.route('/list_voices', methods=['GET'])
+@app.route('/voices', methods=['GET'])
 def list_voices():
-    """List all available ElevenLabs voices."""
+    """Endpoint to list all available (non-standard) voices"""
     try:
-        voices = [v.name for v in elevenlabs_manager.response.voices]
-        return jsonify({"voices": voices})
+        voices = elevenlabs_manager.available_voices
+        return jsonify({
+            "voices": sorted(voices.keys()),
+            "current_voice": elevenlabs_manager.default_voice
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/set_voice/<voice_name>', methods=['POST'])
+def set_voice(voice_name):
+    try:
+        # Get filtered available voices
+        available_voices = elevenlabs_manager.available_voices
+        
+        # Find matching voice (case-insensitive)
+        voice_match = None
+        for name in available_voices:
+            if name.lower() == voice_name.lower():
+                voice_match = name
+                break
+        
+        if not voice_match:
+            return jsonify({
+                "status": "error",
+                "message": f"Voice '{voice_name}' not found or is a standard voice",
+                "available_voices": list(available_voices.keys())
+            }), 400
+        
+        # Set the voice
+        elevenlabs_manager.default_voice = voice_match
+        return jsonify({
+            "status": "success",
+            "voice": voice_match,
+            "available_voices": list(available_voices.keys())
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # Function to run the Flask app in a separate thread
 def run_flask_app():

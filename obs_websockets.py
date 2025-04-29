@@ -157,7 +157,7 @@ def test_display_image():
     source_name = "Madeira Flag"  # Replace with the actual source name in OBS
     
     # Check if the image file exists
-    image_path = os.path.join(os.getcwd(), "Madeira Flag.jpg")
+    image_path = os.path.join(os.getcwd(), "Madeira Flag")
     if not os.path.exists(image_path):
         print(f"Image file 'Img_01' not found in {os.getcwd()}. Please ensure the image is present.")
         return
