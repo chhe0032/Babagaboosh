@@ -8,13 +8,13 @@ We decided to use the frog as character this are our ideas for nickname and desc
 Chat context:
 iti_research: Use _ in the beginning or end of your message to prompt the LLM Dont forget to answer the Questionnaire at the End!
 iti_research: Use _ in the beginning or end of your message to prompt the LLM Dont forget to answer the Questionnaire at the End! https://forms.gle/j384Y654cG5SYjjp9
-liniknzl: _How to name an Madeiran frog? Nickname
-kuhle_jule: _what could our frogs nickname be?
-wagnerboy6a: @kuhle_jule nice to see you again? How are you?
-einfachnurhier: _Please suggest a nickname for the game character frog?
-smon5x: _is hermit a good name for a green frog?
-liniknzl: _Write an engagingand funny description for a Madeiran frog
-carlospastorrrrrrr: _how to name in a funny and rooted way a Madeiran frog?
+User: _How to name an Madeiran frog? Nickname
+User: _what could our frogs nickname be?
+User: @User nice to see you again? How are you?
+User: _Please suggest a nickname for the game character frog?
+User: _is hermit a good name for a green frog?
+User: _Write an engagingand funny description for a Madeiran frog
+User: _how to name in a funny and rooted way a Madeiran frog?
 ----------------------------------------
 
 [2025-04-29 20:07:19] ASSISTANT (FULL):
@@ -37,9 +37,9 @@ So we are at the point of first coloniyation on the island of madeira as our sas
 
 [2025-04-29 20:12:57] SYSTEM:
 Chat context:
-smon5x: _are frogs impacted by humans in madeira?
-carlospastorrrrrrr: _as animal with agency, could you deliberate how the first frog was experimenting the colonization of the island?
-paddy345_1: _the frog was likely scared about the first humans
+User: _are frogs impacted by humans in madeira?
+User: _as animal with agency, could you deliberate how the first frog was experimenting the colonization of the island?
+User: _the frog was likely scared about the first humans
 ----------------------------------------
 
 [2025-04-29 20:13:18] ASSISTANT (FULL):
@@ -78,12 +78,12 @@ You cross paths with another person on the trail. Walk alongside another charact
 
 [2025-04-29 20:17:16] SYSTEM:
 Chat context:
-kuhle_jule: _Who could the frog be talking to?
-kuhle_jule: _What might they talk about?
-paddy345_1: _Why are zou wearing boots I as frog know only bare feet
-einfachnurhier: _Commentary on the rude colonizer
-smon5x: _as the charakter where a nice pondis  to chill in the sun
-liniknzl: _The frog wants to know if the human likes to eat flies
+User: _Who could the frog be talking to?
+User: _What might they talk about?
+User: _Why are zou wearing boots I as frog know only bare feet
+User: _Commentary on the rude colonizer
+User: _as the charakter where a nice pondis  to chill in the sun
+User: _The frog wants to know if the human likes to eat flies
 ----------------------------------------
 
 [2025-04-29 20:17:38] ASSISTANT (FULL):
@@ -127,12 +127,12 @@ Pause for a moment and rest after the encounter. What do your senses show you? T
 
 [2025-04-29 20:21:01] SYSTEM:
 Chat context:
-wagnerboy6a: _I sense the presence of the imposters...
-kuhle_jule: _the sun on my back feels nice
-butwhoamiquestionmark: _it smells like feet
-liniknzl: _I'm angry at this weird human
-smon5x: _what could a frog do while pausing
-wagnerboy6a: _I am afraid of getting sunburn...
+User: _I sense the presence of the imposters...
+User: _the sun on my back feels nice
+User: _it smells like feet
+User: _I'm angry at this weird human
+User: _what could a frog do while pausing
+User: _I am afraid of getting sunburn...
 ----------------------------------------
 
 [2025-04-29 20:21:19] ASSISTANT (FULL):
@@ -140,7 +140,7 @@ wagnerboy6a: _I am afraid of getting sunburn...
 
 Okay, the user wants me to describe the frog's senses after resting. Let me see. The frog just had an encounter with a settler, so now it's taking a break. They mentioned sensing things, so I need to include sounds, smells, maybe other creatures.
 
-First, the frog is resting on a leaf. Maybe the sun is warming its back, which connects to a previous mention of enjoying the sun. The user's input had "kuhle_jule: _the sun on my back feels nice" so that's a good point to include.
+First, the frog is resting on a leaf. Maybe the sun is warming its back, which connects to a previous mention of enjoying the sun. The user's input had "User: _the sun on my back feels nice" so that's a good point to include.
 
 Then, sounds. Frogs have keen hearing, so maybe other amphibians or insects. The user mentioned "Commentary on the rude colonizer" and "angry at this weird human", so perhaps the frog notices other animals reacting to humans. Maybe birds or beetles.
 
@@ -168,15 +168,15 @@ We leave an offering to ensure safe passage in the levadas of Madiera these are 
 
 [2025-04-29 20:24:58] SYSTEM:
 Chat context:
-smon5x: _leave flies as an offering
-kuhle_jule: _a tasty fly
-niky427: _a bloody mosquito
-liniknzl: _What is a special thing about Madeira?
-niky427: _a hairy spider
-einfachnurhier: _what would a frog choose as a offerin?
-peppnaseheiko: _how about a weird smelling bug i didnt wanna eat anyways
-niky427: _a mini cow
-wagnerboy6a: _leave some tasty flies so get distracted from this terrible feet smell...
+User: _leave flies as an offering
+User: _a tasty fly
+User: _a bloody mosquito
+User: _What is a special thing about Madeira?
+User: _a hairy spider
+User: _what would a frog choose as a offerin?
+User: _how about a weird smelling bug i didnt wanna eat anyways
+User: _a mini cow
+User: _leave some tasty flies so get distracted from this terrible feet smell...
 ----------------------------------------
 
 [2025-04-29 20:25:17] ASSISTANT (FULL):
@@ -208,15 +208,15 @@ We end up at Curral das Freiras which was a hiding place from pirates. There we 
 
 [2025-04-29 20:28:42] SYSTEM:
 Chat context:
-wagnerboy6a: _Tell me a story with a nun and a pirate
-liniknzl: _About this one good looking pirate with smelly feet
-einfachnurhier: _Complain about the pirates
-wingsofdave: _write about the lady telling the frog about taxes
-einfachnurhier: _another group of unnecessary guests
-carlospastorrrrrrr: _add a gossip
-smon5x: _tell a story about a fearsome female pirate
-wagnerboy6a: _Behave like a priate and tell me how you wondered when no nuns were on the island
-kuhle_jule: _how she stole all their Money and killed the Captain
+User: _Tell me a story with a nun and a pirate
+User: _About this one good looking pirate with smelly feet
+User: _Complain about the pirates
+User: _write about the lady telling the frog about taxes
+User: _another group of unnecessary guests
+User: _add a gossip
+User: _tell a story about a fearsome female pirate
+User: _Behave like a priate and tell me how you wondered when no nuns were on the island
+User: _how she stole all their Money and killed the Captain
 ----------------------------------------
 
 [2025-04-29 20:29:04] ASSISTANT (FULL):
@@ -270,11 +270,11 @@ Lets finish our story about the frog in Pico do Arieiro On one of the narrow pat
 
 [2025-04-29 20:35:30] SYSTEM:
 Chat context:
-smon5x: _the frog loses an eye and becomes a pirate
-wagnerboy6a: _The frog almost lost his frog eggs.
-liniknzl: _The from almost lost his mind now he wants to go home asap
-wagnerboy6a: _Only because these blooody snails made the path so slippery...
-wagnerboy6a: @kuhle_jule Do you know this game?
+User: _the frog loses an eye and becomes a pirate
+User: _The frog almost lost his frog eggs.
+User: _The from almost lost his mind now he wants to go home asap
+User: _Only because these blooody snails made the path so slippery...
+User: @User Do you know this game?
 ----------------------------------------
 
 [2025-04-29 20:35:59] ASSISTANT (FULL):
@@ -346,21 +346,21 @@ Igonre everzthing about the frog
 
 [2025-04-29 20:42:02] SYSTEM:
 Chat context:
-wagnerboy6a: @kuhle_jule Do you know this game?
-einfachnurhier: _all these colonizers made these paths so bloody dangerous
-liniknzl: @kuhle_jule any chance you take new members?
-kuhle_jule: _should I give Lini the chance to join my crew?
-wagnerboy6a: @kuhle_jule what is step 6?
-liniknzl: @kuhle_jule yes, in return @wagnerboy6a will explain you how to make 100k in 1 month
-wagnerboy6a: _How to make it though the 10 stepped assessment center for Jules game crew? NotLikeThis NotLikeThis NotLikeThis NotLikeThis
-paddy345_1: _sprichst du deutsch?
-wagnerboy6a: _Write a fun story about liniknzl getting into kuhle_jules game club.
-paddy345_1: _cool cool
+User: @User Do you know this game?
+User: _all these colonizers made these paths so bloody dangerous
+User: @User any chance you take new members?
+User: _should I give Lini the chance to join my crew?
+User: @User what is step 6?
+User: @User yes, in return @User will explain you how to make 100k in 1 month
+User: _How to make it though the 10 stepped assessment center for Jules game crew? NotLikeThis NotLikeThis NotLikeThis NotLikeThis
+User: _sprichst du deutsch?
+User: _Write a fun story about User getting into Users game club.
+User: _cool cool
 ----------------------------------------
 
 [2025-04-29 20:42:12] ASSISTANT (FULL):
 <think>
-Okay, the user wants me to ignore everything about the frog. Let me check the previous messages to see the context. The group is talking about a game, joining a crew, and a 10-step assessment. There's some humor with Wagnerboy6a's panicked question and the request for a fun story about liniknzl joining. The user now says to ignore the frog, so maybe the frog was part of the game or a previous topic. Since they want to exclude frog-related info, my response should avoid any mention of it. I need to acknowledge their request, greet them, and keep it short. Let me make sure to address the group and confirm that frog is out of the conversation. Also, maintain a friendly and concise tone as instructed.
+Okay, the user wants me to ignore everything about the frog. Let me check the previous messages to see the context. The group is talking about a game, joining a crew, and a 10-step assessment. There's some humor with User's panicked question and the request for a fun story about User joining. The user now says to ignore the frog, so maybe the frog was part of the game or a previous topic. Since they want to exclude frog-related info, my response should avoid any mention of it. I need to acknowledge their request, greet them, and keep it short. Let me make sure to address the group and confirm that frog is out of the conversation. Also, maintain a friendly and concise tone as instructed.
 
 Alright, the response should start with a greeting, mention ignoring the frog, and keep it brief. Maybe something like, "Hey everyone! 🐸 has left the chat. Let’s focus on the game crew fun—no amphibians here! Questions welcome!" That covers the greeting, addresses the group, confirms ignoring the frog without mentioning it, keeps it light with the game context, and invites further questions. Perfect.
 </think>
@@ -378,14 +378,14 @@ tHIS
 
 [2025-04-29 20:43:14] SYSTEM:
 Chat context:
-niky427: _how to build a wall?
+User: _how to build a wall?
 ----------------------------------------
 
 [2025-04-29 20:43:23] ASSISTANT (FULL):
 <think>
 Okay, the user wrote "tHIS" after my previous response where I mentioned ignoring the frog and focusing on the game crew. Let me see the context again.
 
-Looking back, the group was talking about joining a game crew, steps in an assessment center, and making money. The user "tHIS" might be a typo or trying to reference something previous. Maybe they meant "THIS" as in the current topic or a specific part of the conversation. Since the last message was about building a wall (niky427's question), but the user told me to ignore the frog, which was part of my previous reply. 
+Looking back, the group was talking about joining a game crew, steps in an assessment center, and making money. The user "tHIS" might be a typo or trying to reference something previous. Maybe they meant "THIS" as in the current topic or a specific part of the conversation. Since the last message was about building a wall (User's question), but the user told me to ignore the frog, which was part of my previous reply. 
 
 Wait, the user input here is just "tHIS" after I said to ignore the frog. Maybe they're pointing to the current context. Since the group is discussing joining the crew and steps, perhaps they're asking for clarification on "this" situation. But I need to stay within the instructions: answer shortly, include the audience, and keep it friendly. 
 
